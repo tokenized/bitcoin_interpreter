@@ -10,10 +10,9 @@ import (
 )
 
 func Test_Script_ReverseEndian32(t *testing.T) {
-	lockingScript, err := bitcoin.StringToScript(Script_ReverseEndian32)
-	if err != nil {
-		t.Fatalf("Failed to get locking script : %s", err)
-	}
+	lockingScript := Script_ReverseEndian32
+
+	t.Logf("Script : %s", lockingScript)
 
 	tests := []struct {
 		name   string
@@ -28,7 +27,7 @@ func Test_Script_ReverseEndian32(t *testing.T) {
 		{
 			name:   "high bit",
 			input:  "c63875f57c997b191c20b7431d16f12f5bbed574e5fb6c2907e43d5b69ec13d0",
-			result: "d013ec695b3de407296cfbe574d5be5b2ff1161d43b7201c197b997cf57538c600",
+			result: "d013ec695b3de407296cfbe574d5be5b2ff1161d43b7201c197b997cf57538c6",
 		},
 	}
 
@@ -76,10 +75,9 @@ func Test_Script_ReverseEndian32(t *testing.T) {
 }
 
 func Test_Script_ReverseEndian32Or33(t *testing.T) {
-	lockingScript, err := bitcoin.StringToScript(Script_ReverseEndian32Or33)
-	if err != nil {
-		t.Fatalf("Failed to get locking script : %s", err)
-	}
+	lockingScript := Script_ReverseEndian32Or33
+
+	t.Logf("Script : %s", lockingScript)
 
 	tests := []struct {
 		name   string
@@ -87,12 +85,12 @@ func Test_Script_ReverseEndian32Or33(t *testing.T) {
 		result string
 	}{
 		{
-			name:   "random",
+			name:   "32",
 			input:  "563875f57c997b191c20b7431d16f12f5bbed574e5fb6c2907e43d5b69ec13d0",
 			result: "d013ec695b3de407296cfbe574d5be5b2ff1161d43b7201c197b997cf5753856",
 		},
 		{
-			name:   "high bit",
+			name:   "33",
 			input:  "c63875f57c997b191c20b7431d16f12f5bbed574e5fb6c2907e43d5b69ec13d000",
 			result: "00d013ec695b3de407296cfbe574d5be5b2ff1161d43b7201c197b997cf57538c6",
 		},

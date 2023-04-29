@@ -15,12 +15,9 @@ import (
 
 func Test_Script_CheckSignaturePreimage(t *testing.T) {
 	sigHashType := txbuilder.SigHashForkID | txbuilder.SigHashSingle
-	lockingScript, err := Script_CheckSignaturePreimage(sigHashType)
-	if err != nil {
-		t.Fatalf("Failed to get locking script : %s", err)
-	}
+	lockingScript := Script_CheckSignaturePreimage(sigHashType)
 
-	t.Logf("Script_CheckSignatureHash size : %d", len(lockingScript))
+	t.Logf("Script_CheckSignatureHash (%d bytes) : %s", len(lockingScript), lockingScript)
 
 	value := uint64(1000)
 
@@ -74,31 +71,14 @@ func Test_Script_CheckSignaturePreimage(t *testing.T) {
 }
 
 func Test_Script_ComputeS(t *testing.T) {
-	lockingScript, err := bitcoin.StringToScript(Script_ComputeS)
-	if err != nil {
-		t.Fatalf("Failed to get locking script : %s", err)
-	}
+	lockingScript := Script_ComputeS
 
-	t.Logf("Script_ComputeS size : %d", len(lockingScript))
+	t.Logf("Script_ComputeS (%d bytes) : %s", len(lockingScript), lockingScript)
 
-	kb, err := hex.DecodeString(Script_K[2:])
-	if err != nil {
-		t.Fatalf("Failed to decode private key : %s", err)
-	}
-	k := new(big.Int).SetBytes(kb)
+	k := new(big.Int).SetBytes(Value_K)
+	privateKey := new(big.Int).SetBytes(reverseEndian(Value_Key))
 
-	pk, err := hex.DecodeString(Script_Key[2:])
-	if err != nil {
-		t.Fatalf("Failed to decode private key : %s", err)
-	}
-	privateKey := new(big.Int).SetBytes(reverseEndian(pk))
-
-	preCalcR, err := hex.DecodeString(Script_R[2:])
-	if err != nil {
-		t.Fatalf("Failed to decode R : %s", err)
-	}
-
-	pubKey, err := bitcoin.PublicKeyFromStr(Script_PublicKey[2:])
+	pubKey, err := bitcoin.PublicKeyFromBytes(Value_PublicKey)
 	if err != nil {
 		t.Fatalf("Failed to decode public key : %s", err)
 	}
@@ -130,7 +110,7 @@ func Test_Script_ComputeS(t *testing.T) {
 			hash, _ := hex.DecodeString(tt.hash)
 			t.Logf("Hash : %x", hash)
 
-			check_Script_ComputeS(t, hash, lockingScript, k, privateKey, preCalcR, pubKey)
+			check_Script_ComputeS(t, hash, lockingScript, k, privateKey, pubKey)
 		})
 	}
 
@@ -139,13 +119,13 @@ func Test_Script_ComputeS(t *testing.T) {
 		rand.Read(hash)
 		t.Run(fmt.Sprintf("Random Hash %d", i), func(t *testing.T) {
 			t.Logf("Hash : %x", hash)
-			check_Script_ComputeS(t, hash, lockingScript, k, privateKey, preCalcR, pubKey)
+			check_Script_ComputeS(t, hash, lockingScript, k, privateKey, pubKey)
 		})
 	}
 }
 
 func check_Script_ComputeS(t *testing.T, hash []byte, lockingScript bitcoin.Script,
-	k, privateKey *big.Int, preCalcR []byte, pubKey bitcoin.PublicKey) {
+	k, privateKey *big.Int, pubKey bitcoin.PublicKey) {
 
 	unlockingScriptItems := bitcoin.ScriptItems{bitcoin.NewPushDataScriptItem(reverseEndian(hash))}
 	unlockingScript, err := unlockingScriptItems.Script()
@@ -185,8 +165,8 @@ func check_Script_ComputeS(t *testing.T, hash []byte, lockingScript bitcoin.Scri
 	// 	t.Fatalf("Failed to get r stack item : %s", err)
 	// }
 
-	// if !bytes.Equal(r, preCalcR) {
-	// 	t.Fatalf("Bottom stack value is not R : \n  got  %x, \n  want %x", r, preCalcR)
+	// if !bytes.Equal(r, Value_R) {
+	// 	t.Fatalf("Bottom stack value is not R : \n  got  %x, \n  want %x", r, Value_R)
 	// }
 
 	// sigR := reverseEndian(sig.R.Bytes())
@@ -213,12 +193,9 @@ func check_Script_ComputeS(t *testing.T, hash []byte, lockingScript bitcoin.Scri
 }
 
 func Test_Script_EncodeSignature(t *testing.T) {
-	lockingScript, err := bitcoin.StringToScript(Script_EncodeSignature)
-	if err != nil {
-		t.Fatalf("Failed to get locking script : %s", err)
-	}
+	lockingScript := Script_EncodeSignature
 
-	t.Logf("Script_EncodeSignature size : %d", len(lockingScript))
+	t.Logf("Script_EncodeSignature (%d bytes) : %s", len(lockingScript), lockingScript)
 
 	tests := []struct {
 		name string
@@ -236,11 +213,7 @@ func Test_Script_EncodeSignature(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			preCalcR, err := hex.DecodeString(Script_R[2:])
-			if err != nil {
-				t.Fatalf("Failed to decode R : %s", err)
-			}
-			r := new(big.Int).SetBytes(reverseEndian(preCalcR))
+			r := new(big.Int).SetBytes(reverseEndian(Value_R))
 
 			s, _ := hex.DecodeString(tt.s)
 			t.Logf("S : %x", s)
@@ -296,38 +269,3 @@ func reverseEndian(b []byte) []byte {
 	}
 	return result
 }
-
-// Signature preimage 769 bytes (locking script + 156 bytes)
-//
-// 01000000 // version
-// 79436eeaa792ea39bbda15d2061f836023014b6bf6384c692561152e04d22dd1 // prev outs hash
-// 0000000000000000000000000000000000000000000000000000000000000000 // inputs sequence hash
-// 52fdfc072182654f163f5f0f9a621d729566c74d10037c4d7bbb0407d1e2c649 // previous txid
-// 00000000 // previous tx output index
-
-// fd // previous locking script size type (2 bytes)
-// 6202 // previous locking script size (610)
-
-// previous locking script
-// 5b795a795a79856151795a795a79210ac407f0e4bd44bfc207355a778b046225a7068fc59ee7eda4
-// 3ad905aadbffc800206c266b30e6a1319c66dc401e5bd6b432ba49688eecd118297041da8074ce08
-// 105c795679615679aa0079610079517f517f517f517f517f517f517f517f517f517f517f517f517f
-// 517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f7c7e7c7e
-// 7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e
-// 7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e007e81517a7561577956795679567956796153795679
-// 5479577995939521414136d08c5ed2bf3ba048afe6dcaebafeffffffffffffffffffffffffffffff
-// 00517951796151795179970079009f63007952799367007968517a75517a75517a7561527a75517a
-// 517951795296a0630079527994527a75517a6853798277527982775379012080517f517f517f517f
-// 517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f
-// 517f517f517f517f517f517f517f7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e
-// 7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e01205279
-// 947f7754537993527993013051797e527e54797e58797e527e53797e52797e57797e0079517a7551
-// 7a75517a75517a75517a75517a75517a75517a75517a75517a75517a75517a75517a756100795779
-// ac517a75517a75517a75517a75517a75517a75517a75517a75517a7561517a75517a756177777777
-// 77777777777777777777
-
-// e803000000000000 // input value
-// ffffffff // input sequence
-// 1d94f3090978a1f915ce1cc68bace2129f20f8140d4603845a1d6da67e914a97 // outputs hash
-// 00000000 // lock time
-// 43000000 // sig hash type
