@@ -4,8 +4,8 @@ go 1.18
 
 require (
 	github.com/pkg/errors v0.9.1
-	github.com/tokenized/pkg v0.6.1-0.20230420132943-cefbedb3c0e1
-	github.com/tokenized/txbuilder v1.0.1-0.20230420133313-87674f3948df
+	github.com/tokenized/pkg v0.6.1-0.20230430152433-5471a8abb68d
+	github.com/tokenized/txbuilder v1.0.1-0.20230430152558-320b6e65908d
 )
 
 require (
@@ -22,6 +22,3 @@ require (
 	github.com/tyler-smith/go-bip32 v0.0.0-20170922074101-2c9cfd177564 // indirect
 	golang.org/x/crypto v0.8.0 // indirect
 )
-
-replace github.com/tokenized/pkg => ../pkg
-replace github.com/tokenized/txbuilder => ../txbuilder

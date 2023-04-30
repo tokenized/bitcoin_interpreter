@@ -1,4 +1,4 @@
-package bitcoin_interpreter
+package check_signature_preimage
 
 // Signature preimage 769 bytes (locking script + 156 bytes)
 //

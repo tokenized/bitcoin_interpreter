@@ -1,12 +1,9 @@
-package bitcoin_interpreter
+package check_signature_preimage
 
 import (
 	"encoding/hex"
-	"fmt"
-	"reflect"
 
 	"github.com/tokenized/pkg/bitcoin"
-	"github.com/tokenized/txbuilder"
 )
 
 // Note:
@@ -20,22 +17,21 @@ import (
 // Maybe just extra random data at the end of a Tokenized action script.
 
 var (
-	Value_CurveN      []byte
-	Value_CurveNHalf  []byte
-	Value_R           []byte
-	Value_R_BigEndian []byte
-	Value_Encoded_R   []byte
-	Value_K           []byte
-	Value_InverseK    []byte
+	Value_CurveN     []byte // secp256k1 curve N
+	Value_CurveNHalf []byte // secp256k1 curve N/2
 
-	Value_Key       []byte
-	Value_PublicKey []byte
+	Value_K           []byte // Hard coded k value
+	Value_InverseK    []byte // Pre-computed inverse of Value_K
+	Value_R           []byte // Pre-computed little endian R from Value_K
+	Value_R_BigEndian []byte // Pre-computed big endian Value_R
+	Value_Encoded_R   []byte // Pre-computed big endian Value_R with 0x02 and length byte
 
-	Script_ReverseEndian32     bitcoin.Script
-	Script_ReverseEndian32Or33 bitcoin.Script
+	Value_Key       []byte // Hard coded private key
+	Value_PublicKey []byte // Pre-computed public key from Value_Key
+	Value_Key_R_Mul []byte // Pre-computed Value_Key * Value_R
 
-	Script_FixNegative         bitcoin.Script
-	Script_FixNegative_Reverse bitcoin.Script
+	Script_ReverseEndian32 bitcoin.Script
+	Script_FixNegative     bitcoin.Script
 
 	Script_EncodeSignatureValue bitcoin.Script
 	Script_EncodeSignature      bitcoin.Script
@@ -67,6 +63,8 @@ func init() {
 	// generation.
 	Value_Key, _ = hex.DecodeString("97dfd76851bf465e8f715593b217714858bbe9570ff3bd5e33840a34e20ff026")
 
+	Value_Key_R_Mul, _ = hex.DecodeString("f608e7b277ed70a30a879f500cdc24ef395fab9966d07615541c27da0222143d1044147c0f5849d63e288e823215a090789e81be96c8a523e8214cfdba62d007")
+
 	// Value_PublicKey is the public key derived from Value_Key to use for passing into
 	// OP_CHECKSIG to verify a signature generated in a script.
 	Value_PublicKey, _ = hex.DecodeString("02ba79df5f8ae7604a9830f03c7933028186aede0675a16f025dc4f8be8eec0382")
@@ -81,25 +79,9 @@ func init() {
 		Script_ReverseEndian32 = append(Script_ReverseEndian32, bitcoin.OP_CAT)
 	}
 
-	Script_ReverseEndian32Or33 = concat(
-		bitcoin.OP_SIZE,
-		bytePushData(0x21), bitcoin.OP_EQUAL,
-		bitcoin.OP_DUP,
-		bitcoin.OP_TOALTSTACK,
-		bitcoin.OP_IF,
-		bitcoin.OP_1, bitcoin.OP_SPLIT,
-		bitcoin.OP_ENDIF,
-		Script_ReverseEndian32,
-		bitcoin.OP_FROMALTSTACK,
-		bitcoin.OP_IF,
-		bitcoin.OP_SWAP,
-		bitcoin.OP_CAT,
-		bitcoin.OP_ENDIF,
-	)
-
 	// Script_FixNegative changes the top item on the stack, if it's high bit is set, to a postive
 	// by adding the zero byte.
-	Script_FixNegative = concat(
+	Script_FixNegative = bitcoin.ConcatScript(
 		bitcoin.OP_DUP,
 		bitcoin.OP_0, bitcoin.OP_GREATERTHAN,
 		bitcoin.OP_IF,
@@ -107,18 +89,24 @@ func init() {
 		bitcoin.OP_ENDIF,
 	)
 
-	Script_FixNegative_Reverse = concat(
-		bitcoin.OP_DUP,
-		bitcoin.OP_0, bitcoin.OP_GREATERTHAN,
-		bitcoin.OP_IF,
-		bitcoin.OP_0, bitcoin.OP_SWAP, bitcoin.OP_CAT,
-		bitcoin.OP_ENDIF,
-	)
+	// Script_EncodeSignatureValue converts the top stack item to big endian and prepends 0x02 and a
+	// byte for its length.
+	//
+	// Input: The top stack item must be little endian value
+	// Output: The top stack item will be a big endian number with 0x02 and a length byte prepended.
+	Script_EncodeSignatureValue = bitcoin.ConcatScript(
+		bitcoin.BytePushData(0x20), bitcoin.OP_NUM2BIN, Script_ReverseEndian32,
 
-	// Script_EncodeSignatureValue prepends the top stack item with 0x02 and a byte for its length.
-	// TODO We might need to have special handling for shorter values. --ce
-	Script_EncodeSignatureValue = concat(
-		Script_FixNegative_Reverse, Script_ReverseEndian32Or33,
+		// Trim trailing zero. There is still the potential to have more than one trailing zero, so
+		// we still need to have a preimage malleation fix when unlocking.
+		bitcoin.BytePushData(0x1f), bitcoin.OP_SPLIT,
+		bitcoin.OP_DUP,
+		bitcoin.OP_IF,
+		bitcoin.OP_CAT,
+		bitcoin.OP_ELSE,
+		bitcoin.OP_DROP,
+		bitcoin.OP_ENDIF,
+
 		bitcoin.OP_SIZE,
 		bitcoin.OP_SWAP,
 		bitcoin.OP_CAT,
@@ -130,13 +118,13 @@ func init() {
 	// Script_EncodeSignature encodes a little endian S value as a signature by combining the
 	// pre-computed R value.
 	//
-	// Inputs: The top stack item must be a little endian S value
-	// Outputs: The top stack item will be a DER encoded signature that works with OP_CHECKSIG.
-	Script_EncodeSignature = concat(
-		Script_EncodeSignatureValue,                                // Encode S
-		pushData(Value_Encoded_R), bitcoin.OP_SWAP, bitcoin.OP_CAT, // concatenate pre-encoded R in front of S
+	// Input: The top stack item must be a little endian S value
+	// Output: The top stack item will be a DER encoded signature that works with OP_CHECKSIG.
+	Script_EncodeSignature = bitcoin.ConcatScript(
+		Script_EncodeSignatureValue,                                        // Encode S
+		bitcoin.PushData(Value_Encoded_R), bitcoin.OP_SWAP, bitcoin.OP_CAT, // bitcoin.ConcatScriptenate pre-encoded R in front of S
 		bitcoin.OP_SIZE, bitcoin.OP_SWAP, bitcoin.OP_CAT, // prepend size
-		bytePushData(0x30), bitcoin.OP_SWAP, bitcoin.OP_CAT, // prepend header byte 0x30
+		bitcoin.BytePushData(0x30), bitcoin.OP_SWAP, bitcoin.OP_CAT, // prepend header byte 0x30
 	)
 
 	// Script_ComputeS is a section of bitcoin script that computes the corresponding S value for a
@@ -145,19 +133,19 @@ func init() {
 	// Input: The top item on the stack previous to this script execution must be the signature hash
 	// as a little endian number value so the output of a OP_HASH256 must have endian reversed and
 	// be converted to a number.
-	// Output: S is on top of the stack.
+	// Output: The top stack item will be the little endian S value.
 	//
 	// S = privateKey * R
 	// S = S + hash
 	// S = S * invK
 	// S = S mod N
-	Script_ComputeS = concat(
+	Script_ComputeS = bitcoin.ConcatScript(
 		Script_FixNegative,
-		pushData(Value_R),
-		pushData(Value_Key), bitcoin.OP_MUL, // S = private key * R (duplicate to leave R on stack)
-		bitcoin.OP_ADD,                           // S = S + hash (OP_2 OP_ROLL to get sig hash from before R)
-		pushData(Value_InverseK), bitcoin.OP_MUL, // S = S * invK
-		pushData(Value_CurveN),
+		// bitcoin.PushData(Value_R), bitcoin.PushData(Value_Key), bitcoin.OP_MUL, // S = private key * R
+		bitcoin.PushData(Value_Key_R_Mul),                // S = private key * R
+		bitcoin.OP_ADD,                                   // S = S + hash (OP_2 OP_ROLL to get sig hash from before R)
+		bitcoin.PushData(Value_InverseK), bitcoin.OP_MUL, // S = S * invK
+		bitcoin.PushData(Value_CurveN),
 		bitcoin.OP_DUP, bitcoin.OP_ROT, bitcoin.OP_SWAP, bitcoin.OP_MOD, // S = S mod N (OP_SWAP so N is the denominator)
 		bitcoin.OP_DUP,
 		bitcoin.OP_2, bitcoin.OP_3, bitcoin.OP_PICK, bitcoin.OP_DIV, // Curve N / 2
@@ -170,109 +158,9 @@ func init() {
 		bitcoin.OP_ENDIF,
 	)
 
-	Script_CheckSignaturePreimage_Pre = concat(
+	Script_CheckSignaturePreimage_Pre = bitcoin.ConcatScript(
 		bitcoin.OP_HASH256,                      // Hash preimage
 		Script_ReverseEndian32,                  // Change to little endian
 		Script_ComputeS, Script_EncodeSignature, // Compute S and encode in signature
 	)
-}
-
-// bytePushData returns the push op to push a single byte value to the stack.
-func bytePushData(b byte) []byte {
-	if b == 0 {
-		return []byte{bitcoin.OP_0}
-	}
-
-	if b <= 16 {
-		return []byte{b - bitcoin.OP_1 + 1}
-	}
-
-	return []byte{0x01, b} // one byte push data
-}
-
-func pushData(b []byte) []byte {
-	script, err := bitcoin.NewPushDataScriptItem(b).Script()
-	if err != nil {
-		panic(fmt.Sprintf("Failed to create push data script : %s", err))
-	}
-
-	return script
-}
-
-type byteOrSlice interface{}
-
-func concat(bs ...byteOrSlice) []byte {
-	l := 0
-	for _, v := range bs {
-		switch b := v.(type) {
-		case []byte:
-			l += len(b)
-		case bitcoin.Script:
-			l += len(b)
-		case byte, int:
-			l += 1
-		default:
-			panic(fmt.Sprintf("Unknown concat script value type : %s : %v", typeName(reflect.TypeOf(v)), v))
-		}
-	}
-
-	result := make([]byte, l)
-	offset := 0
-	for _, v := range bs {
-		switch b := v.(type) {
-		case []byte:
-			// println("add byte slice", "0x"+hex.EncodeToString(b))
-			// println("offset", offset)
-			copy(result[offset:], b)
-			offset += len(b)
-		case bitcoin.Script:
-			// println("add byte slice", "0x"+hex.EncodeToString(b))
-			// println("offset", offset)
-			copy(result[offset:], b)
-			offset += len(b)
-		case byte:
-			// println("add byte", "0x"+hex.EncodeToString([]byte{byte(b)}))
-			// println("offset", offset)
-			result[offset] = b
-			offset += 1
-		case int:
-			if uint(b) > uint(0xff) {
-				panic("unsupported script int value over 8 bits")
-			}
-
-			// println("add int", "0x"+hex.EncodeToString([]byte{byte(b)}))
-			// println("offset", offset)
-			result[offset] = byte(b)
-			offset += 1
-
-		default:
-			panic(fmt.Sprintf("Unknown concat script value type : %s", typeName(reflect.TypeOf(v))))
-		}
-	}
-
-	return result
-}
-
-func typeName(typ reflect.Type) string {
-	kind := typ.Kind()
-	switch kind {
-	case reflect.Ptr, reflect.Slice, reflect.Array:
-		return fmt.Sprintf("%s:%s", kind, typeName(typ.Elem()))
-	case reflect.Struct:
-		return typ.Name()
-	default:
-		return kind.String()
-	}
-}
-
-// Script_CheckSignaturePreimage verifies that the top item on the stack is the signature preimage
-// of the spending transaction.
-func Script_CheckSignaturePreimage(sigHashType txbuilder.SigHashType) bitcoin.Script {
-	script := Script_CheckSignaturePreimage_Pre
-	script = append(script, bytePushData(byte(sigHashType))...)
-	script = append(script, bitcoin.OP_CAT)
-	script = append(script, pushData(Value_PublicKey)...)
-	script = append(script, bitcoin.OP_CODESEPARATOR)
-	script = append(script, bitcoin.OP_CHECKSIG)
-	return script
 }
