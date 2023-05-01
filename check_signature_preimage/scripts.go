@@ -30,11 +30,12 @@ var (
 	Value_PublicKey []byte // Pre-computed public key from Value_Key
 	Value_Key_R_Mul []byte // Pre-computed Value_Key * Value_R
 
-	Script_ReverseEndian32 bitcoin.Script
-	Script_FixNegative     bitcoin.Script
+	Script_ReverseEndian32            bitcoin.Script
+	Script_FixNegative                bitcoin.Script
+	Script_TrimLeadingZeroNotNegative bitcoin.Script
 
 	Script_EncodeSignatureValue bitcoin.Script
-	Script_EncodeSignature      bitcoin.Script
+	Script_EncodeFullSignature  bitcoin.Script
 
 	Script_ComputeS bitcoin.Script
 
@@ -89,24 +90,59 @@ func init() {
 		bitcoin.OP_ENDIF,
 	)
 
+	// Script_TrimLeadingZeroNotNegative removes a leading zero from the top stack item if the next
+	// byte does not have its high bit set.
+	//
+	// Trimming the leading zero removes a failure with 1 in 256 odds when the first byte is zero.
+	// Checking for a high bit in the next byte removes a failure with 1 in 512 odds.
+	// There is still a 1 in 131,071 chance of failure when the first two bytes are zero and the
+	// next byte's high bit is not set.
+	// These can be fixed by the spender by malleating the signature preimage to change the
+	// signature hash so the S value changes to not having leading zeros. If tx lock time is not
+	// being used (all input sequences are max) then just increment the lock time as it doesn't
+	// functionaly change anything. If the tx lock time is required to be something specific then
+	// the input's sequence can be incremented so long as there aren't other signatures that depend
+	// on it. Otherwise a locking script can be modified in a way that doesn't change the function.
+	Script_TrimLeadingZeroNotNegative = bitcoin.ConcatScript(
+		bitcoin.OP_1, bitcoin.OP_SPLIT,
+		bitcoin.OP_SWAP,
+		bitcoin.OP_DUP,
+		bitcoin.OP_0, bitcoin.OP_EQUAL, // 0x80 will be "false" so check for exactly equal to zero
+
+		// The first byte is zero
+		bitcoin.OP_IF,
+		bitcoin.OP_DROP, // drop the zero
+
+		// Check for high bit set because then we want to leave the zero
+		bitcoin.OP_1, bitcoin.OP_SPLIT,
+		bitcoin.OP_SWAP,
+		bitcoin.OP_DUP,
+		bitcoin.BytePushData(0x80), bitcoin.OP_AND,
+		bitcoin.OP_0, bitcoin.OP_EQUAL, // 0x80 will be "false" so check for exactly equal to zero
+		bitcoin.OP_ROT,
+		bitcoin.OP_SWAP, bitcoin.OP_CAT, // put the next byte back
+
+		bitcoin.OP_SWAP,                               // Get && 0x80 back to the top
+		bitcoin.OP_NOTIF,                              // If high bit set (and result is not zero)
+		bitcoin.OP_0, bitcoin.OP_SWAP, bitcoin.OP_CAT, // put the zero back at the beginning
+		bitcoin.OP_ENDIF,
+
+		bitcoin.OP_ELSE,
+
+		bitcoin.OP_SWAP, bitcoin.OP_CAT,
+
+		bitcoin.OP_ENDIF,
+	)
+
 	// Script_EncodeSignatureValue converts the top stack item to big endian and prepends 0x02 and a
 	// byte for its length.
 	//
 	// Input: The top stack item must be little endian value
 	// Output: The top stack item will be a big endian number with 0x02 and a length byte prepended.
 	Script_EncodeSignatureValue = bitcoin.ConcatScript(
-		bitcoin.BytePushData(0x20), bitcoin.OP_NUM2BIN, Script_ReverseEndian32,
-
-		// Trim trailing zero. There is still the potential to have more than one trailing zero, so
-		// we still need to have a preimage malleation fix when unlocking.
-		bitcoin.BytePushData(0x1f), bitcoin.OP_SPLIT,
-		bitcoin.OP_DUP,
-		bitcoin.OP_IF,
-		bitcoin.OP_CAT,
-		bitcoin.OP_ELSE,
-		bitcoin.OP_DROP,
-		bitcoin.OP_ENDIF,
-
+		bitcoin.BytePushData(0x20), bitcoin.OP_NUM2BIN,
+		Script_ReverseEndian32,
+		// Script_TrimLeadingZeroNotNegative, // 30 bytes smaller script but more chance of malleation
 		bitcoin.OP_SIZE,
 		bitcoin.OP_SWAP,
 		bitcoin.OP_CAT,
@@ -120,7 +156,7 @@ func init() {
 	//
 	// Input: The top stack item must be a little endian S value
 	// Output: The top stack item will be a DER encoded signature that works with OP_CHECKSIG.
-	Script_EncodeSignature = bitcoin.ConcatScript(
+	Script_EncodeFullSignature = bitcoin.ConcatScript(
 		Script_EncodeSignatureValue,                                        // Encode S
 		bitcoin.PushData(Value_Encoded_R), bitcoin.OP_SWAP, bitcoin.OP_CAT, // bitcoin.ConcatScriptenate pre-encoded R in front of S
 		bitcoin.OP_SIZE, bitcoin.OP_SWAP, bitcoin.OP_CAT, // prepend size
@@ -141,8 +177,12 @@ func init() {
 	// S = S mod N
 	Script_ComputeS = bitcoin.ConcatScript(
 		Script_FixNegative,
+
+		// We save a few bytes of script here by pre-calculating this rather than including the two
+		// values.
 		// bitcoin.PushData(Value_R), bitcoin.PushData(Value_Key), bitcoin.OP_MUL, // S = private key * R
-		bitcoin.PushData(Value_Key_R_Mul),                // S = private key * R
+		bitcoin.PushData(Value_Key_R_Mul), // S = private key * R
+
 		bitcoin.OP_ADD,                                   // S = S + hash (OP_2 OP_ROLL to get sig hash from before R)
 		bitcoin.PushData(Value_InverseK), bitcoin.OP_MUL, // S = S * invK
 		bitcoin.PushData(Value_CurveN),
@@ -159,8 +199,9 @@ func init() {
 	)
 
 	Script_CheckSignaturePreimage_Pre = bitcoin.ConcatScript(
-		bitcoin.OP_HASH256,                      // Hash preimage
-		Script_ReverseEndian32,                  // Change to little endian
-		Script_ComputeS, Script_EncodeSignature, // Compute S and encode in signature
+		bitcoin.OP_HASH256,         // Hash preimage
+		Script_ReverseEndian32,     // Change to little endian
+		Script_ComputeS,            // Compute S value of signature
+		Script_EncodeFullSignature, // Combine pre-computed R value and encode full signature
 	)
 }

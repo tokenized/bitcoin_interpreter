@@ -4,8 +4,8 @@ go 1.18
 
 require (
 	github.com/pkg/errors v0.9.1
-	github.com/tokenized/pkg v0.6.1-0.20230430152433-5471a8abb68d
-	github.com/tokenized/txbuilder v1.0.1-0.20230430152558-320b6e65908d
+	github.com/tokenized/pkg v0.6.1-0.20230501131243-a87eb4575a9e
+	github.com/tokenized/txbuilder v1.0.1-0.20230501131332-ffa68ad0fb4b
 )
 
 require (

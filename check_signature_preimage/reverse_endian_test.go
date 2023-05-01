@@ -2,15 +2,18 @@ package check_signature_preimage
 
 import (
 	"bytes"
+	"context"
 	"encoding/hex"
 	"testing"
 
 	"github.com/tokenized/bitcoin_interpreter"
+	"github.com/tokenized/logger"
 	"github.com/tokenized/pkg/bitcoin"
 	"github.com/tokenized/txbuilder"
 )
 
 func Test_Script_ReverseEndian32(t *testing.T) {
+	ctx := logger.ContextWithLogger(context.Background(), true, false, "")
 	lockingScript := Script_ReverseEndian32
 
 	t.Logf("Script : %s", lockingScript)
@@ -48,11 +51,11 @@ func Test_Script_ReverseEndian32(t *testing.T) {
 			interpreter := bitcoin_interpreter.NewInterpreter()
 			hashCache := &txbuilder.SigHashCache{}
 
-			if err := interpreter.Execute(unlockingScript, nil, 0, 0, hashCache); err != nil {
+			if err := interpreter.Execute(ctx, unlockingScript, nil, 0, 0, hashCache); err != nil {
 				t.Fatalf("Failed to interpret unlocking script : %s", err)
 			}
 
-			if err := interpreter.Execute(lockingScript, nil, 0, 0, hashCache); err != nil {
+			if err := interpreter.Execute(ctx, lockingScript, nil, 0, 0, hashCache); err != nil {
 				t.Fatalf("Failed to interpret locking script : %s", err)
 			}
 

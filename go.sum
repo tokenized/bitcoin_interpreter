@@ -65,12 +65,12 @@ github.com/tokenized/envelope v1.1.0/go.mod h1:9+0tL1NKJQNnFRjGhaHCIWG9K6QQnh8Hq
 github.com/tokenized/logger v0.1.3 h1:Vq/2jEgqyDfjJPgoMo773/bn7ZUow8EWSAY8+gFdTQI=
 github.com/tokenized/logger v0.1.3/go.mod h1:bA5PfUEFwtUy0yEIIq4Q3ZwBk1kIZTkYIRASq3fPw+k=
 github.com/tokenized/pkg v0.6.0/go.mod h1:reIXdZflcfFbuX1RvX90yAjlYVJaUiYDc5CWJ6qCQww=
-github.com/tokenized/pkg v0.6.1-0.20230430152433-5471a8abb68d h1:dyYBUx+Wtkynf+i8pZ0wBfAtDPZqwYYE2aRGqWbOmsw=
-github.com/tokenized/pkg v0.6.1-0.20230430152433-5471a8abb68d/go.mod h1:c1xkP+9ON6kwoMQB9LMpy34YcqUwqNXjPMlltYTYZIc=
+github.com/tokenized/pkg v0.6.1-0.20230501131243-a87eb4575a9e h1:Qpp6CAzMlxX9FKqG85Nzvm3mACUO/rLIIIQdlMSUEfs=
+github.com/tokenized/pkg v0.6.1-0.20230501131243-a87eb4575a9e/go.mod h1:c1xkP+9ON6kwoMQB9LMpy34YcqUwqNXjPMlltYTYZIc=
 github.com/tokenized/threads v0.1.2 h1:olWOi2kZ4GLX4XmRbgHJzMbaTxp7CKMdiMbHJjKZaRQ=
 github.com/tokenized/threads v0.1.2/go.mod h1:+/44KAYA6wqU+AC743pLGBgzkD06IB9+piOOE8BkGK0=
-github.com/tokenized/txbuilder v1.0.1-0.20230430152558-320b6e65908d h1:fFMV8DL6ypQxfY8wERH9CZ2oisTUSh8iq4jpDRTJn2E=
-github.com/tokenized/txbuilder v1.0.1-0.20230430152558-320b6e65908d/go.mod h1:7h0Gs0eHtdT79B5fJekxtTQp0DUXnKPEM8RWH/c8mkg=
+github.com/tokenized/txbuilder v1.0.1-0.20230501131332-ffa68ad0fb4b h1:j6PtwKG32UIcOLJRajNYrLHt/9gVjIfZIylMW4ITQWc=
+github.com/tokenized/txbuilder v1.0.1-0.20230501131332-ffa68ad0fb4b/go.mod h1:YZJa/Rn/VO9jdvScr3FlC8i7PpFIYN7RdPa/TuyM/9I=
 github.com/tyler-smith/go-bip32 v0.0.0-20170922074101-2c9cfd177564 h1:NXXyQVeRVLK8Xu27/hkkjwVOZLk5v4ZBEvvMtqMqznM=
 github.com/tyler-smith/go-bip32 v0.0.0-20170922074101-2c9cfd177564/go.mod h1:0/YuQQF676+d4CMNclTqGUam1EDwz0B8o03K9pQqA3c=
 golang.org/x/crypto v0.0.0-20170930174604-9419663f5a44/go.mod h1:6SG95UA2DQfeDnfUPMdvaQW0Q7yPrPDi9nlGo2tz2b4=

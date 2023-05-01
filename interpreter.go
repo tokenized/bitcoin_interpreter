@@ -2,12 +2,13 @@ package bitcoin_interpreter
 
 import (
 	"bytes"
-	"encoding/hex"
+	"context"
 	"fmt"
 	"math"
 	"math/big"
 	"strings"
 
+	"github.com/tokenized/logger"
 	"github.com/tokenized/pkg/bitcoin"
 	"github.com/tokenized/pkg/wire"
 	"github.com/tokenized/txbuilder"
@@ -45,8 +46,18 @@ func NewInterpreter() *Interpreter {
 	return &Interpreter{}
 }
 
-func (i *Interpreter) Execute(script bitcoin.Script, tx *wire.MsgTx, inputIndex int,
-	inputValue uint64, hashCache *txbuilder.SigHashCache) error {
+func (i *Interpreter) Execute(ctx context.Context, script bitcoin.Script, tx *wire.MsgTx,
+	inputIndex int, inputValue uint64, hashCache *txbuilder.SigHashCache) error {
+	return i.ExecuteFull(ctx, script, tx, inputIndex, inputValue, hashCache, false)
+}
+
+func (i *Interpreter) ExecuteVerbose(ctx context.Context, script bitcoin.Script, tx *wire.MsgTx,
+	inputIndex int, inputValue uint64, hashCache *txbuilder.SigHashCache) error {
+	return i.ExecuteFull(ctx, script, tx, inputIndex, inputValue, hashCache, true)
+}
+
+func (i *Interpreter) ExecuteFull(ctx context.Context, script bitcoin.Script, tx *wire.MsgTx,
+	inputIndex int, inputValue uint64, hashCache *txbuilder.SigHashCache, verbose bool) error {
 
 	scriptBuf := bytes.NewReader(script)
 	codeScript := script
@@ -58,27 +69,47 @@ func (i *Interpreter) Execute(script bitcoin.Script, tx *wire.MsgTx, inputIndex 
 			return errors.Wrapf(err, "parse item: %d", itemIndex)
 		}
 
-		if err := i.ExecuteOpCode(item, itemIndex, scriptBuf, &codeScript, tx, inputIndex, inputValue,
-			hashCache); err != nil {
+		if err := i.ExecuteOpCodeFull(ctx, item, itemIndex, scriptBuf, &codeScript, tx, inputIndex,
+			inputValue, hashCache, verbose); err != nil {
 			return errors.Wrapf(err, "execute item: %d", itemIndex)
 		}
 
-		println("")
-		println(fmt.Sprintf("stack (%d items):", len(i.stack)))
-		println(i.StackString())
+		if verbose {
+			logger.VerboseWithFields(ctx, []logger.Field{
+				logger.Int("size", len(i.stack)),
+				logger.Strings("stack", i.StackStrings()),
+			}, "Stack")
+		}
 	}
 
 	return nil
 }
 
-func (i *Interpreter) ExecuteOpCode(item *bitcoin.ScriptItem, itemIndex int,
+func (i *Interpreter) ExecuteOpCode(ctx context.Context, item *bitcoin.ScriptItem, itemIndex int,
 	scriptBuf *bytes.Reader, codeScript *bitcoin.Script, tx *wire.MsgTx, inputIndex int,
 	inputValue uint64, hashCache *txbuilder.SigHashCache) error {
+	return i.ExecuteOpCodeFull(ctx, item, itemIndex, scriptBuf, codeScript, tx, inputIndex,
+		inputValue, hashCache, false)
+}
 
-	println("")
+func (i *Interpreter) ExecuteOpCodeVerbose(ctx context.Context, item *bitcoin.ScriptItem,
+	itemIndex int, scriptBuf *bytes.Reader, codeScript *bitcoin.Script, tx *wire.MsgTx,
+	inputIndex int, inputValue uint64, hashCache *txbuilder.SigHashCache) error {
+	return i.ExecuteOpCodeFull(ctx, item, itemIndex, scriptBuf, codeScript, tx, inputIndex,
+		inputValue, hashCache, true)
+}
+
+func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.ScriptItem,
+	itemIndex int, scriptBuf *bytes.Reader, codeScript *bitcoin.Script, tx *wire.MsgTx,
+	inputIndex int, inputValue uint64, hashCache *txbuilder.SigHashCache, verbose bool) error {
 
 	if !i.ifIsExecute() {
-		println(fmt.Sprintf("no-execute(%d):", itemIndex), item.String())
+		if verbose {
+			logger.VerboseWithFields(ctx, []logger.Field{
+				logger.Int("item_index", itemIndex),
+				logger.Stringer("item", item),
+			}, "Not executing op code")
+		}
 
 		if item.Type == bitcoin.ScriptItemTypePushData {
 			if !isMinimalPush(item.OpCode, item.Data) {
@@ -120,7 +151,12 @@ func (i *Interpreter) ExecuteOpCode(item *bitcoin.ScriptItem, itemIndex int,
 		return nil
 	}
 
-	println(fmt.Sprintf("execute(%d):", itemIndex), item.String())
+	if verbose {
+		logger.VerboseWithFields(ctx, []logger.Field{
+			logger.Int("item_index", itemIndex),
+			logger.Stringer("item", item),
+		}, "Execute op code")
+	}
 
 	if item.Type == bitcoin.ScriptItemTypePushData {
 		if !isMinimalPush(item.OpCode, item.Data) {
@@ -183,7 +219,12 @@ func (i *Interpreter) ExecuteOpCode(item *bitcoin.ScriptItem, itemIndex int,
 		}
 
 		execute := isTrue(b)
-		println("if:", execute)
+		if verbose {
+			logger.VerboseWithFields(ctx, []logger.Field{
+				logger.Int("item_index", itemIndex),
+				logger.Bool("execute", execute),
+			}, "If statement")
+		}
 		i.ifStack = append(i.ifStack, &ifStackItem{
 			execute:   execute,
 			elseFound: false,
@@ -196,7 +237,12 @@ func (i *Interpreter) ExecuteOpCode(item *bitcoin.ScriptItem, itemIndex int,
 		}
 
 		execute := !isTrue(b)
-		println("not if:", execute)
+		if verbose {
+			logger.VerboseWithFields(ctx, []logger.Field{
+				logger.Int("item_index", itemIndex),
+				logger.Bool("execute", execute),
+			}, "Not if statement")
+		}
 		i.ifStack = append(i.ifStack, &ifStackItem{
 			execute:   execute,
 			elseFound: false,
@@ -214,7 +260,12 @@ func (i *Interpreter) ExecuteOpCode(item *bitcoin.ScriptItem, itemIndex int,
 		}
 		lastIfItem.elseFound = true
 		lastIfItem.execute = !lastIfItem.execute
-		println("else:", lastIfItem.execute)
+		if verbose {
+			logger.VerboseWithFields(ctx, []logger.Field{
+				logger.Int("item_index", itemIndex),
+				logger.Bool("execute", lastIfItem.execute),
+			}, "Else statement")
+		}
 
 	case bitcoin.OP_ENDIF:
 		l := len(i.ifStack)
@@ -750,14 +801,12 @@ func (i *Interpreter) ExecuteOpCode(item *bitcoin.ScriptItem, itemIndex int,
 			return errors.Wrapf(ErrScriptInvalid, "stack empty: %s", item)
 		}
 		n1 := decodeInteger(b1)
-		println("pop", n1.Text(16))
 
 		b2, err := i.popStack()
 		if err != nil {
 			return errors.Wrapf(ErrScriptInvalid, "stack empty: %s", item)
 		}
 		n2 := decodeInteger(b2)
-		println("pop", n2.Text(16))
 
 		i.pushStack(encodeInteger(n1.Mul(n1, n2)))
 
@@ -778,8 +827,6 @@ func (i *Interpreter) ExecuteOpCode(item *bitcoin.ScriptItem, itemIndex int,
 			return errors.Wrapf(ErrScriptInvalid, "divide by zero: %s", item)
 		}
 
-		println(n1.Text(16), " / ", n2.Text(16))
-
 		i.pushStack(encodeInteger(n1.Div(n1, n2)))
 
 	case bitcoin.OP_MOD: // Divide a by b and put the remainder on the stack
@@ -798,8 +845,6 @@ func (i *Interpreter) ExecuteOpCode(item *bitcoin.ScriptItem, itemIndex int,
 		if n2.Cmp(big.NewInt(0)) == 0 {
 			return errors.Wrapf(ErrScriptInvalid, "divide by zero: %s", item)
 		}
-
-		println("remainder", n1.Text(16), " / ", n2.Text(16))
 
 		i.pushStack(encodeInteger(n1.Mod(n1, n2)))
 
@@ -1122,19 +1167,19 @@ func (i *Interpreter) ExecuteOpCode(item *bitcoin.ScriptItem, itemIndex int,
 			return errors.Wrapf(ErrScriptInvalid, "invalid signature: %s", err)
 		}
 
-		println("code script", codeScript.String())
 		sigHash, err := txbuilder.SignatureHash(tx, inputIndex, *codeScript, inputValue,
 			hashType, hashCache)
 		if err != nil {
 			return errors.Wrapf(ErrScriptInvalid, "calculate sig hash: %s", err)
 		}
-		println("sig hash", hex.EncodeToString(sigHash[:]))
 
 		verified := signature.Verify(*sigHash, publicKey)
-		if verified {
-			println("sig verified")
-		} else {
-			println("sig not verified")
+		if verbose {
+			if verified {
+				logger.Verbose(ctx, "Sig verified\n")
+			} else {
+				logger.Verbose(ctx, "Sig not verified")
+			}
 		}
 
 		switch item.OpCode {
@@ -1448,7 +1493,6 @@ func padNumber(b []byte, size int) []byte {
 	n := decodeInteger(b)
 	b = encodeInteger(n)
 
-	println("pad", hex.EncodeToString(b))
 	l := len(b)
 	if l == 0 {
 		return make([]byte, size)
@@ -1460,7 +1504,6 @@ func padNumber(b []byte, size int) []byte {
 
 	result := make([]byte, size)
 	copy(result, b)
-	println("padded", hex.EncodeToString(result))
 
 	// last := b[l-1]
 	// if last&0x80 != 0 {

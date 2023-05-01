@@ -2,10 +2,12 @@ package bitcoin_interpreter
 
 import (
 	"bytes"
+	"context"
 	"encoding/hex"
 	"math/rand"
 	"testing"
 
+	"github.com/tokenized/logger"
 	"github.com/tokenized/pkg/bitcoin"
 	"github.com/tokenized/pkg/wire"
 	"github.com/tokenized/txbuilder"
@@ -14,6 +16,8 @@ import (
 )
 
 func Test_Execute_Hex(t *testing.T) {
+	ctx := logger.ContextWithLogger(context.Background(), true, false, "")
+
 	tests := []struct {
 		name          string
 		lockingScript string
@@ -86,12 +90,12 @@ func Test_Execute_Hex(t *testing.T) {
 			hashCache := &txbuilder.SigHashCache{}
 			interpreter := NewInterpreter()
 
-			if err := interpreter.Execute(tx.TxIn[tt.inputIndex].UnlockingScript, tx, tt.inputIndex,
-				tt.inputValue, hashCache); err != nil {
+			if err := interpreter.Execute(ctx, tx.TxIn[tt.inputIndex].UnlockingScript, tx,
+				tt.inputIndex, tt.inputValue, hashCache); err != nil {
 				t.Errorf("Failed to verify unlocking script : %s", err)
 			}
 
-			if err := interpreter.Execute(lockingScript, tx, tt.inputIndex, tt.inputValue,
+			if err := interpreter.Execute(ctx, lockingScript, tx, tt.inputIndex, tt.inputValue,
 				hashCache); err != nil {
 				t.Errorf("Failed to verify locking script : %s", err)
 			}
@@ -118,44 +122,6 @@ func Test_Execute_Hex(t *testing.T) {
 			}
 		})
 	}
-}
-
-func Test_Build(t *testing.T) {
-	tx := txbuilder.NewTxBuilder(0.05, 0.0)
-
-	input1Keys, locking1Script, err := mockMultiP2PKHInput(tx, 5000, 2, 3)
-	if err != nil {
-		t.Fatalf("Failed to mock transfer input : %s", err)
-	}
-
-	t.Logf("Locking Script 1 : %s", locking1Script)
-
-	// input2Key, locking2Script, err := mockP2PKHInput(tx, 6000)
-	// if err != nil {
-	// 	t.Fatalf("Failed to mock transfer input : %s", err)
-	// }
-
-	// t.Logf("Locking Script 2: %s", locking2Script)
-
-	receiverKey, _ := bitcoin.GenerateKey(bitcoin.MainNet)
-	receiverLockingScript, _ := receiverKey.LockingScript()
-	if err := tx.AddOutput(receiverLockingScript, 4000, true, false); err != nil {
-		t.Fatalf("Failed to add output : %s", err)
-	}
-
-	if _, err := tx.Sign(input1Keys); err != nil {
-		t.Fatalf("Failed to sign transfer tx : %s", err)
-	}
-
-	buf := &bytes.Buffer{}
-	if err := tx.MsgTx.Serialize(buf); err != nil {
-		t.Fatalf("Failed to serialize tx : %s", err)
-	}
-
-	t.Logf("Tx Hex : %x", buf.Bytes())
-
-	t.Logf("Tx : %s", tx.String(bitcoin.MainNet))
-
 }
 
 func mockP2PKHInput(tx *txbuilder.TxBuilder, value uint64) (*bitcoin.Key, bitcoin.Script, error) {
