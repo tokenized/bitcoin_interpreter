@@ -107,7 +107,7 @@ func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.Scrip
 			logger.VerboseWithFields(ctx, []logger.Field{
 				logger.Int("item_index", itemIndex),
 				logger.Stringer("item", item),
-			}, "Not executing op code")
+			}, "Not executing")
 		}
 
 		if item.Type == bitcoin.ScriptItemTypePushData {
@@ -120,9 +120,23 @@ func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.Scrip
 
 		switch item.OpCode {
 		case bitcoin.OP_IF:
+			if verbose {
+				logger.VerboseWithFields(ctx, []logger.Field{
+					logger.Int("item_index", itemIndex),
+					logger.Int("if_depth", len(i.ifStack)),
+				}, "Not executing if statement")
+			}
+
 			i.ifStack = append(i.ifStack, &ifStackItem{})
 
 		case bitcoin.OP_NOTIF:
+			if verbose {
+				logger.VerboseWithFields(ctx, []logger.Field{
+					logger.Int("item_index", itemIndex),
+					logger.Int("if_depth", len(i.ifStack)),
+				}, "Not executing \"not if\" statement")
+			}
+
 			i.ifStack = append(i.ifStack, &ifStackItem{})
 
 		case bitcoin.OP_ELSE:
@@ -131,17 +145,34 @@ func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.Scrip
 				return errors.Wrapf(ErrScriptInvalid, "if stack empty: %s", item)
 			}
 
+			if verbose {
+				logger.VerboseWithFields(ctx, []logger.Field{
+					logger.Int("item_index", itemIndex),
+					logger.Int("if_depth", len(i.ifStack)),
+				}, "Not executing else statement")
+			}
+
 			lastIfItem := i.ifStack[l-1]
 			if lastIfItem.elseFound {
 				return errors.Wrap(ErrScriptInvalid, "more than one OP_ELSE")
 			}
 			lastIfItem.elseFound = true
-			lastIfItem.execute = !lastIfItem.execute
+
+			if len(i.ifStack) == 1 || i.ifStack[l-2].execute {
+				lastIfItem.execute = !lastIfItem.execute
+			}
 
 		case bitcoin.OP_ENDIF:
 			l := len(i.ifStack)
 			if l == 0 {
 				return errors.Wrapf(ErrScriptInvalid, "if stack empty: %s", item)
+			}
+
+			if verbose {
+				logger.VerboseWithFields(ctx, []logger.Field{
+					logger.Int("item_index", itemIndex),
+					logger.Int("if_depth", len(i.ifStack)),
+				}, "Not executing end if statement")
 			}
 
 			i.ifStack = i.ifStack[:l-1]
@@ -154,7 +185,7 @@ func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.Scrip
 		logger.VerboseWithFields(ctx, []logger.Field{
 			logger.Int("item_index", itemIndex),
 			logger.Stringer("item", item),
-		}, "Execute op code")
+		}, "Executing")
 	}
 
 	if item.Type == bitcoin.ScriptItemTypePushData {
@@ -221,6 +252,7 @@ func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.Scrip
 		if verbose {
 			logger.VerboseWithFields(ctx, []logger.Field{
 				logger.Int("item_index", itemIndex),
+				logger.Int("if_depth", len(i.ifStack)),
 				logger.Bool("execute", execute),
 			}, "If statement")
 		}
@@ -239,6 +271,7 @@ func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.Scrip
 		if verbose {
 			logger.VerboseWithFields(ctx, []logger.Field{
 				logger.Int("item_index", itemIndex),
+				logger.Int("if_depth", len(i.ifStack)),
 				logger.Bool("execute", execute),
 			}, "Not if statement")
 		}
@@ -262,6 +295,7 @@ func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.Scrip
 		if verbose {
 			logger.VerboseWithFields(ctx, []logger.Field{
 				logger.Int("item_index", itemIndex),
+				logger.Int("if_depth", len(i.ifStack)),
 				logger.Bool("execute", lastIfItem.execute),
 			}, "Else statement")
 		}
@@ -270,6 +304,13 @@ func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.Scrip
 		l := len(i.ifStack)
 		if l == 0 {
 			return errors.Wrapf(ErrScriptInvalid, "if stack empty: %s", item)
+		}
+
+		if verbose {
+			logger.VerboseWithFields(ctx, []logger.Field{
+				logger.Int("item_index", itemIndex),
+				logger.Int("if_depth", len(i.ifStack)),
+			}, "End if statement")
 		}
 
 		i.ifStack = i.ifStack[:l-1]
@@ -281,6 +322,11 @@ func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.Scrip
 		}
 
 		if !isTrue(b) {
+			if verbose {
+				logger.VerboseWithFields(ctx, []logger.Field{
+					logger.Int("item_index", itemIndex),
+				}, "Verify failed")
+			}
 			i.err = errors.Wrapf(ErrVerifyFailed, "op code: %s", item)
 			i.scriptVerifyFailed = true
 			return nil
@@ -700,6 +746,12 @@ func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.Scrip
 		}
 
 		if !bytes.Equal(b1, b2) {
+			if verbose {
+				logger.VerboseWithFields(ctx, []logger.Field{
+					logger.Int("item_index", itemIndex),
+				}, "Verify equal failed")
+			}
+
 			i.err = errors.Wrapf(ErrVerifyFailed, "op code: %s", item)
 			i.scriptVerifyFailed = true
 			return nil
@@ -1166,8 +1218,8 @@ func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.Scrip
 			return errors.Wrapf(ErrScriptInvalid, "invalid signature: %s", err)
 		}
 
-		sigHash, err := SignatureHash(tx, inputIndex, *codeScript, inputValue,
-			hashType, hashCache)
+		sigHash, err := SignatureHash(tx, inputIndex, *codeScript, -1, inputValue, hashType,
+			hashCache)
 		if err != nil {
 			return errors.Wrapf(ErrScriptInvalid, "calculate sig hash: %s", err)
 		}
@@ -1175,7 +1227,7 @@ func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.Scrip
 		verified := signature.Verify(*sigHash, publicKey)
 		if verbose {
 			if verified {
-				logger.Verbose(ctx, "Sig verified\n")
+				logger.Verbose(ctx, "Sig verified")
 			} else {
 				logger.Verbose(ctx, "Sig not verified")
 			}

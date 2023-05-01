@@ -5,7 +5,7 @@ go 1.18
 require (
 	github.com/pkg/errors v0.9.1
 	github.com/tokenized/logger v0.1.3
-	github.com/tokenized/pkg v0.6.1-0.20230501131243-a87eb4575a9e
+	github.com/tokenized/pkg v0.6.1-0.20230501154733-c08b6c3669c6
 )
 
 require (

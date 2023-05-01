@@ -40,6 +40,10 @@ var (
 	Script_ComputeS bitcoin.Script
 
 	Script_CheckSignaturePreimage_Pre bitcoin.Script
+
+	Script_Get_OutputsHash    bitcoin.Script
+	Script_Get_InputsSequence bitcoin.Script
+	Script_Get_LockTime       bitcoin.Script
 )
 
 func init() {
@@ -203,5 +207,53 @@ func init() {
 		Script_ReverseEndian32,     // Change to little endian
 		Script_ComputeS,            // Compute S value of signature
 		Script_EncodeFullSignature, // Combine pre-computed R value and encode full signature
+	)
+
+	Script_Get_OutputsHash = bitcoin.ConcatScript(
+		bitcoin.OP_DUP, // Copy preimage
+
+		// Calculate offset 8 before the end.
+		bitcoin.OP_SIZE, bitcoin.BytePushData(8), bitcoin.OP_SWAP, bitcoin.OP_SUB,
+
+		// Drop sig hash type and lock time that are after the outputs hash.
+		bitcoin.OP_SPLIT, bitcoin.OP_DROP,
+
+		// Calculate offset 32 before the end.
+		bitcoin.OP_SIZE, bitcoin.BytePushData(32), bitcoin.OP_SWAP, bitcoin.OP_SUB,
+
+		// Drop everything before the outputs hash.
+		bitcoin.OP_SPLIT, bitcoin.OP_SWAP, bitcoin.OP_DROP,
+	)
+
+	Script_Get_InputsSequence = bitcoin.ConcatScript(
+		bitcoin.OP_DUP, // Copy preimage
+
+		// Calculate offset 40 before the end.
+		bitcoin.OP_SIZE, bitcoin.BytePushData(40), bitcoin.OP_SWAP, bitcoin.OP_SUB,
+
+		// Drop sig hash type, lock time, and outputs hash that are after the input sequence.
+		bitcoin.OP_SPLIT, bitcoin.OP_DROP,
+
+		// Calculate offset 4 before the end.
+		bitcoin.OP_SIZE, bitcoin.BytePushData(4), bitcoin.OP_SWAP, bitcoin.OP_SUB,
+
+		// Drop everything before the input sequence.
+		bitcoin.OP_SPLIT, bitcoin.OP_SWAP, bitcoin.OP_DROP,
+	)
+
+	Script_Get_LockTime = bitcoin.ConcatScript(
+		bitcoin.OP_DUP, // Copy preimage
+
+		// Calculate offset 4 before the end.
+		bitcoin.OP_SIZE, bitcoin.BytePushData(4), bitcoin.OP_SWAP, bitcoin.OP_SUB,
+
+		// Drop sig hash type.
+		bitcoin.OP_SPLIT, bitcoin.OP_DROP,
+
+		// Calculate offset 4 before the end.
+		bitcoin.OP_SIZE, bitcoin.BytePushData(4), bitcoin.OP_SWAP, bitcoin.OP_SUB,
+
+		// Drop everything before the lock time.
+		bitcoin.OP_SPLIT, bitcoin.OP_SWAP, bitcoin.OP_DROP,
 	)
 }

@@ -42,7 +42,7 @@ func Test_CheckSignaturePreimageScript_Fixed(t *testing.T) {
 	t.Logf("Tx Bytes: %x", txBuf.Bytes())
 
 	hashCache := &bitcoin_interpreter.SigHashCache{}
-	preimage, err := bitcoin_interpreter.SignaturePreimage(tx, inputIndex, lockingScript, value,
+	preimage, err := bitcoin_interpreter.SignaturePreimage(tx, inputIndex, lockingScript, 1, value,
 		sigHashType, hashCache)
 	if err != nil {
 		t.Fatalf("Failed to get signature preimage : %s", err)
@@ -187,7 +187,7 @@ func checkSignaturePreimageScript(ctx context.Context, t *testing.T, txHex strin
 	t.Logf("Tx Bytes: %x", txBuf.Bytes())
 
 	hashCache := &bitcoin_interpreter.SigHashCache{}
-	preimage, err := bitcoin_interpreter.SignaturePreimage(tx, inputIndex, lockingScript, value,
+	preimage, err := bitcoin_interpreter.SignaturePreimage(tx, inputIndex, lockingScript, 1, value,
 		sigHashType, hashCache)
 	if err != nil {
 		t.Fatalf("Failed to get signature preimage : %s", err)
@@ -289,7 +289,7 @@ func checkSignaturePreimageScript_Random(ctx context.Context, t *testing.T,
 	tx.AddTxOut(wire.NewTxOut(value, receiveLockingScript))
 
 	hashCache := &bitcoin_interpreter.SigHashCache{}
-	preimage, err := bitcoin_interpreter.SignaturePreimage(tx, inputIndex, lockingScript, value,
+	preimage, err := bitcoin_interpreter.SignaturePreimage(tx, inputIndex, lockingScript, 1, value,
 		sigHashType, hashCache)
 	if err != nil {
 		t.Fatalf("Failed to get signature preimage : %s", err)

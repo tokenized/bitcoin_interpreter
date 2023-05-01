@@ -1,36 +1,70 @@
 package check_signature_preimage
 
-// Signature preimage 769 bytes (locking script + 156 bytes)
-//
-// 01000000 // version
-// 79436eeaa792ea39bbda15d2061f836023014b6bf6384c692561152e04d22dd1 // prev outs hash
-// 0000000000000000000000000000000000000000000000000000000000000000 // inputs sequence hash
-// 52fdfc072182654f163f5f0f9a621d729566c74d10037c4d7bbb0407d1e2c649 // previous txid
-// 00000000 // previous tx output index
+import (
+	"encoding/binary"
 
-// fd // previous locking script size type (2 bytes)
-// 6202 // previous locking script size (610)
+	"github.com/tokenized/pkg/bitcoin"
+	"github.com/tokenized/pkg/wire"
+)
 
-// previous locking script
-// 5b795a795a79856151795a795a79210ac407f0e4bd44bfc207355a778b046225a7068fc59ee7eda4
-// 3ad905aadbffc800206c266b30e6a1319c66dc401e5bd6b432ba49688eecd118297041da8074ce08
-// 105c795679615679aa0079610079517f517f517f517f517f517f517f517f517f517f517f517f517f
-// 517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f7c7e7c7e
-// 7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e
-// 7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e007e81517a7561577956795679567956796153795679
-// 5479577995939521414136d08c5ed2bf3ba048afe6dcaebafeffffffffffffffffffffffffffffff
-// 00517951796151795179970079009f63007952799367007968517a75517a75517a7561527a75517a
-// 517951795296a0630079527994527a75517a6853798277527982775379012080517f517f517f517f
-// 517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f517f
-// 517f517f517f517f517f517f517f7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e
-// 7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e7c7e01205279
-// 947f7754537993527993013051797e527e54797e58797e527e53797e52797e57797e0079517a7551
-// 7a75517a75517a75517a75517a75517a75517a75517a75517a75517a75517a75517a756100795779
-// ac517a75517a75517a75517a75517a75517a75517a75517a75517a7561517a75517a756177777777
-// 77777777777777777777
+// CheckPreimageOutputsHashScript creates a script section that verifies that the preimage in the
+// top stack item contains the specified outputs hash. It leaves the preimage on the stack.
+func CheckPreimageOutputsHashScript(outputsHash bitcoin.Hash32, verify bool) bitcoin.Script {
+	opEqual := bitcoin.OP_EQUAL
+	if verify {
+		opEqual = bitcoin.OP_EQUALVERIFY
+	}
 
-// e803000000000000 // input value
-// ffffffff // input sequence
-// 1d94f3090978a1f915ce1cc68bace2129f20f8140d4603845a1d6da67e914a97 // outputs hash
-// 00000000 // lock time
-// 43000000 // sig hash type
+	return bitcoin.ConcatScript(
+		Script_Get_OutputsHash,
+		bitcoin.PushData(outputsHash[:]),
+		opEqual,
+	)
+}
+
+// CheckPreimageInputSequenceScript creates a script section that verifies that the preimage in the
+// top stack item contains the specified sequence in the input being checked. It leaves the preimage
+// on the stack.
+func CheckPreimageInputSequenceScript(inputSequence uint32, verify bool) bitcoin.Script {
+	var inputSequenceBytes [4]byte
+	binary.LittleEndian.PutUint32(inputSequenceBytes[:], inputSequence)
+
+	opEqual := bitcoin.OP_EQUAL
+	if verify {
+		opEqual = bitcoin.OP_EQUALVERIFY
+	}
+
+	return bitcoin.ConcatScript(
+		Script_Get_InputsSequence,
+		bitcoin.PushData(inputSequenceBytes[:]),
+		opEqual,
+	)
+}
+
+// CheckPreimageLockTimeScript creates a script section that verifies that the preimage in the top
+// stack item contains the specified lock time and the input being checked has a sequnce less than
+// the max sequence. It leaves the preimage on the stack.
+// Note: for the lock time to be applied one of the inputs must have a sequence less than the max
+// sequence value.
+func CheckPreimageLockTimeScript(lockTime uint32, verify bool) bitcoin.Script {
+	var lockTimeBytes [4]byte
+	binary.LittleEndian.PutUint32(lockTimeBytes[:], lockTime)
+
+	var maxInputSequenceBytes [4]byte
+	binary.LittleEndian.PutUint32(maxInputSequenceBytes[:], wire.MaxTxInSequenceNum)
+
+	result := bitcoin.ConcatScript(
+		Script_Get_LockTime,
+		bitcoin.PushData(lockTimeBytes[:]),
+		bitcoin.OP_EQUALVERIFY, // This uses verify because it isn't at the end of the script.
+		Script_Get_InputsSequence,
+		bitcoin.PushData(maxInputSequenceBytes[:]),
+		bitcoin.OP_EQUAL, bitcoin.OP_NOT, // Not equal to max sequence
+	)
+
+	if verify {
+		return bitcoin.ConcatScript(result, bitcoin.OP_VERIFY)
+	}
+
+	return result
+}

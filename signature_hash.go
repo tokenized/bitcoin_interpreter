@@ -159,18 +159,6 @@ func (shc *SigHashCache) HashOutputs(tx *wire.MsgTx) []byte {
 	return shc.hashOutputs
 }
 
-func SignatureHashPreimageBytes(tx *wire.MsgTx, index int, lockScript []byte, value uint64,
-	hashType SigHashType, hashCache *SigHashCache) ([]byte, error) {
-
-	buf := &bytes.Buffer{}
-	if err := writeSignatureHashPreimageBytes(buf, tx, index, lockScript, value, hashType,
-		hashCache); err != nil {
-		return nil, errors.Wrap(err, "write sig hash bytes")
-	}
-
-	return buf.Bytes(), nil
-}
-
 // SignatureHash computes the hash to be signed for a transaction's input using the new, optimized
 //   digest calculation algorithm defined in BIP0143:
 //   https://github.com/bitcoin/bips/blob/master/bip-0143.mediawiki.
@@ -181,12 +169,17 @@ func SignatureHashPreimageBytes(tx *wire.MsgTx, index int, lockScript []byte, va
 //   offline, or hardware wallets to compute the exact amount being spent, in addition to the final
 //   transaction fee. In the case the wallet if fed an invalid input amount, the real sighash will
 //   differ causing the produced signature to be invalid.
-func SignatureHash(tx *wire.MsgTx, index int, lockScript []byte, value uint64,
-	hashType SigHashType, hashCache *SigHashCache) (*bitcoin.Hash32, error) {
+func SignatureHash(tx *wire.MsgTx, index int, lockingScript []byte, opCodeSeparatorIndex int,
+	value uint64, hashType SigHashType, hashCache *SigHashCache) (*bitcoin.Hash32, error) {
+
+	codeScript, err := afterOpCodeSeparator(lockingScript, opCodeSeparatorIndex)
+	if err != nil {
+		return nil, errors.Wrap(err, "after code separator")
+	}
 
 	s := sha256.New()
 
-	if err := writeSignatureHashPreimageBytes(s, tx, index, lockScript, value, hashType,
+	if err := writeSignatureHashPreimageBytes(s, tx, index, codeScript, value, hashType,
 		hashCache); err != nil {
 		return nil, errors.Wrap(err, "write sig hash bytes")
 	}
@@ -195,11 +188,16 @@ func SignatureHash(tx *wire.MsgTx, index int, lockScript []byte, value uint64,
 	return &hash, nil
 }
 
-func SignaturePreimage(tx *wire.MsgTx, index int, lockScript []byte, value uint64,
-	hashType SigHashType, hashCache *SigHashCache) ([]byte, error) {
+func SignaturePreimage(tx *wire.MsgTx, index int, lockingScript []byte, opCodeSeparatorIndex int,
+	value uint64, hashType SigHashType, hashCache *SigHashCache) ([]byte, error) {
+
+	codeScript, err := afterOpCodeSeparator(lockingScript, opCodeSeparatorIndex)
+	if err != nil {
+		return nil, errors.Wrap(err, "after code separator")
+	}
 
 	buf := &bytes.Buffer{}
-	if err := writeSignatureHashPreimageBytes(buf, tx, index, lockScript, value, hashType,
+	if err := writeSignatureHashPreimageBytes(buf, tx, index, codeScript, value, hashType,
 		hashCache); err != nil {
 		return nil, errors.Wrap(err, "write sig hash bytes")
 	}
@@ -207,7 +205,7 @@ func SignaturePreimage(tx *wire.MsgTx, index int, lockScript []byte, value uint6
 	return buf.Bytes(), nil
 }
 
-func writeSignatureHashPreimageBytes(w io.Writer, tx *wire.MsgTx, index int, lockScript []byte,
+func writeSignatureHashPreimageBytes(w io.Writer, tx *wire.MsgTx, index int, codeScript []byte,
 	value uint64, hashType SigHashType, hashCache *SigHashCache) error {
 
 	// As a sanity check, ensure the passed input index for the transaction is valid.
@@ -242,12 +240,9 @@ func writeSignatureHashPreimageBytes(w io.Writer, tx *wire.MsgTx, index int, loc
 	// Next, write the outpoint being spent.
 	tx.TxIn[index].PreviousOutPoint.Serialize(w)
 
-	// Write the locking script being spent.
-	lockScriptSign, err := afterOpCodeSeparator(lockScript)
-	if err != nil {
-		return errors.Wrap(err, "after op code separator")
-	}
-	wire.WriteVarBytes(w, 0, lockScriptSign)
+	// Write the portion of the locking script being spent that is after the last executed
+	// OP_CODE_SEPARATOR.
+	wire.WriteVarBytes(w, 0, codeScript)
 
 	// Next, add the input amount, and sequence number of the input being signed.
 	binary.Write(w, binary.LittleEndian, value)
@@ -275,24 +270,38 @@ func writeSignatureHashPreimageBytes(w io.Writer, tx *wire.MsgTx, index int, loc
 // afterOpCodeSeparator returns the portion of the locking script after the last OP_CODESEPARATOR.
 // NOTE: This is only correct if the last OP_CODESEPARATOR is actually executed when the script is
 // executed, so there is room for error here depending on the locking script. --ce
-func afterOpCodeSeparator(lockScript []byte) ([]byte, error) {
-	items, err := bitcoin.ParseScriptItems(bytes.NewReader(lockScript), -1)
+func afterOpCodeSeparator(lockingScript bitcoin.Script, index int) ([]byte, error) {
+	if index == -1 {
+		return lockingScript, nil
+	}
+
+	items, err := bitcoin.ParseScriptItems(bytes.NewReader(lockingScript), -1)
 	if err != nil {
 		return nil, errors.Wrap(err, "parse")
 	}
 
+	remaining := index
 	itemCount := len(items)
-	for i := itemCount - 1; i >= 0; i-- {
+	lastIndex := -1
+	for i := 0; i < itemCount; i++ {
 		item := items[i]
 		if item.Type == bitcoin.ScriptItemTypeOpCode && item.OpCode == bitcoin.OP_CODESEPARATOR {
 			if i == itemCount-1 {
 				return nil, nil // OP_CODESEPARATOR is the last op code of the script
 			}
 
-			return items[i+1:].Script()
+			if remaining == 0 {
+				return items[i+1:].Script()
+			}
+			lastIndex = i
+			remaining--
 		}
 	}
 
+	if lastIndex != -1 {
+		return items[lastIndex+1:].Script()
+	}
+
 	// No OP_CODESEPARATOR found so return the full locking script.
-	return lockScript, nil
+	return lockingScript, nil
 }
