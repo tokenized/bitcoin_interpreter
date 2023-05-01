@@ -1,13 +1,13 @@
 package check_signature_preimage
 
 import (
+	"github.com/tokenized/bitcoin_interpreter"
 	"github.com/tokenized/pkg/bitcoin"
-	"github.com/tokenized/txbuilder"
 )
 
 // CheckSignaturePreimageScript returns a section of bitcoin script that verifies that the top item
 // on the stack is the signature preimage of the spending transaction.
-func CheckSignaturePreimageScript(sigHashType txbuilder.SigHashType) bitcoin.Script {
+func CheckSignaturePreimageScript(sigHashType bitcoin_interpreter.SigHashType) bitcoin.Script {
 	return bitcoin.ConcatScript(
 		Script_CheckSignaturePreimage_Pre,
 		bitcoin.BytePushData(byte(sigHashType)),

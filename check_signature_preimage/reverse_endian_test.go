@@ -9,7 +9,6 @@ import (
 	"github.com/tokenized/bitcoin_interpreter"
 	"github.com/tokenized/logger"
 	"github.com/tokenized/pkg/bitcoin"
-	"github.com/tokenized/txbuilder"
 )
 
 func Test_Script_ReverseEndian32(t *testing.T) {
@@ -49,7 +48,7 @@ func Test_Script_ReverseEndian32(t *testing.T) {
 			}
 
 			interpreter := bitcoin_interpreter.NewInterpreter()
-			hashCache := &txbuilder.SigHashCache{}
+			hashCache := &bitcoin_interpreter.SigHashCache{}
 
 			if err := interpreter.Execute(ctx, unlockingScript, nil, 0, 0, hashCache); err != nil {
 				t.Fatalf("Failed to interpret unlocking script : %s", err)

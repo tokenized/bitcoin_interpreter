@@ -13,12 +13,11 @@ import (
 	"github.com/tokenized/logger"
 	"github.com/tokenized/pkg/bitcoin"
 	"github.com/tokenized/pkg/wire"
-	"github.com/tokenized/txbuilder"
 )
 
 func Test_CheckSignaturePreimageScript_Fixed(t *testing.T) {
 	ctx := logger.ContextWithLogger(context.Background(), true, false, "")
-	sigHashType := txbuilder.SigHashForkID | txbuilder.SigHashSingle
+	sigHashType := bitcoin_interpreter.SigHashForkID | bitcoin_interpreter.SigHashSingle
 	lockingScript := CheckSignaturePreimageScript(sigHashType)
 
 	t.Logf("Script_CheckSignatureHash (%d bytes) : %s", len(lockingScript), lockingScript)
@@ -42,9 +41,9 @@ func Test_CheckSignaturePreimageScript_Fixed(t *testing.T) {
 	tx.Serialize(txBuf)
 	t.Logf("Tx Bytes: %x", txBuf.Bytes())
 
-	hashCache := &txbuilder.SigHashCache{}
-	preimage, err := txbuilder.SignaturePreimage(tx, inputIndex, lockingScript, value, sigHashType,
-		hashCache)
+	hashCache := &bitcoin_interpreter.SigHashCache{}
+	preimage, err := bitcoin_interpreter.SignaturePreimage(tx, inputIndex, lockingScript, value,
+		sigHashType, hashCache)
 	if err != nil {
 		t.Fatalf("Failed to get signature preimage : %s", err)
 	}
@@ -64,7 +63,7 @@ func Test_CheckSignaturePreimageScript_Fixed(t *testing.T) {
 
 	interpreter := bitcoin_interpreter.NewInterpreter()
 
-	hashCache = &txbuilder.SigHashCache{}
+	hashCache = &bitcoin_interpreter.SigHashCache{}
 	if err := interpreter.Execute(ctx, unlockingScript, tx, inputIndex, value,
 		hashCache); err != nil {
 		t.Fatalf("Failed to interpret unlocking script : %s", err)
@@ -86,7 +85,7 @@ func Test_CheckSignaturePreimageScript_Fixed(t *testing.T) {
 // Test_CheckSignaturePreimageScript tests specific preimages that have known to fail in the past.
 func Test_CheckSignaturePreimageScript_Specific(t *testing.T) {
 	ctx := logger.ContextWithLogger(context.Background(), true, false, "")
-	sigHashType := txbuilder.SigHashForkID | txbuilder.SigHashSingle
+	sigHashType := bitcoin_interpreter.SigHashForkID | bitcoin_interpreter.SigHashSingle
 	lockingScript := CheckSignaturePreimageScript(sigHashType)
 
 	t.Logf("Script_CheckSignatureHash (%d bytes) : %s", len(lockingScript), lockingScript)
@@ -169,7 +168,7 @@ func Test_CheckSignaturePreimageScript_Specific(t *testing.T) {
 }
 
 func checkSignaturePreimageScript(ctx context.Context, t *testing.T, txHex string,
-	sigHashType txbuilder.SigHashType, lockingScript bitcoin.Script) {
+	sigHashType bitcoin_interpreter.SigHashType, lockingScript bitcoin.Script) {
 
 	b, _ := hex.DecodeString(txHex)
 
@@ -187,9 +186,9 @@ func checkSignaturePreimageScript(ctx context.Context, t *testing.T, txHex strin
 	tx.Serialize(txBuf)
 	t.Logf("Tx Bytes: %x", txBuf.Bytes())
 
-	hashCache := &txbuilder.SigHashCache{}
-	preimage, err := txbuilder.SignaturePreimage(tx, inputIndex, lockingScript, value, sigHashType,
-		hashCache)
+	hashCache := &bitcoin_interpreter.SigHashCache{}
+	preimage, err := bitcoin_interpreter.SignaturePreimage(tx, inputIndex, lockingScript, value,
+		sigHashType, hashCache)
 	if err != nil {
 		t.Fatalf("Failed to get signature preimage : %s", err)
 	}
@@ -218,7 +217,7 @@ func checkSignaturePreimageScript(ctx context.Context, t *testing.T, txHex strin
 
 	interpreter := bitcoin_interpreter.NewInterpreter()
 
-	hashCache = &txbuilder.SigHashCache{}
+	hashCache = &bitcoin_interpreter.SigHashCache{}
 	if err := interpreter.ExecuteVerbose(ctx, unlockingScript, tx, inputIndex, value,
 		hashCache); err != nil {
 		t.Fatalf("Failed to interpret unlocking script : %s", err)
@@ -239,7 +238,7 @@ func checkSignaturePreimageScript(ctx context.Context, t *testing.T, txHex strin
 
 func Test_CheckSignaturePreimageScript_Random(t *testing.T) {
 	ctx := logger.ContextWithLogger(context.Background(), true, false, "")
-	sigHashType := txbuilder.SigHashForkID | txbuilder.SigHashSingle
+	sigHashType := bitcoin_interpreter.SigHashForkID | bitcoin_interpreter.SigHashSingle
 	lockingScript := CheckSignaturePreimageScript(sigHashType)
 
 	t.Logf("Script_CheckSignatureHash (%d bytes) : %s", len(lockingScript), lockingScript)
@@ -263,7 +262,7 @@ func Test_CheckSignaturePreimageScript_Random(t *testing.T) {
 }
 
 func checkSignaturePreimageScript_Random(ctx context.Context, t *testing.T,
-	lockingScript bitcoin.Script, sigHashType txbuilder.SigHashType) ([]byte, error) {
+	lockingScript bitcoin.Script, sigHashType bitcoin_interpreter.SigHashType) ([]byte, error) {
 
 	value := uint64(rand.Intn(1000) + 1)
 
@@ -289,9 +288,9 @@ func checkSignaturePreimageScript_Random(ctx context.Context, t *testing.T,
 	receiveLockingScript, _ := receiverKey.LockingScript()
 	tx.AddTxOut(wire.NewTxOut(value, receiveLockingScript))
 
-	hashCache := &txbuilder.SigHashCache{}
-	preimage, err := txbuilder.SignaturePreimage(tx, inputIndex, lockingScript, value, sigHashType,
-		hashCache)
+	hashCache := &bitcoin_interpreter.SigHashCache{}
+	preimage, err := bitcoin_interpreter.SignaturePreimage(tx, inputIndex, lockingScript, value,
+		sigHashType, hashCache)
 	if err != nil {
 		t.Fatalf("Failed to get signature preimage : %s", err)
 	}
@@ -304,7 +303,7 @@ func checkSignaturePreimageScript_Random(ctx context.Context, t *testing.T,
 
 	interpreter := bitcoin_interpreter.NewInterpreter()
 
-	hashCache = &txbuilder.SigHashCache{}
+	hashCache = &bitcoin_interpreter.SigHashCache{}
 	if err := interpreter.Execute(ctx, unlockingScript, tx, inputIndex, value,
 		hashCache); err != nil {
 		t.Fatalf("Failed to interpret unlocking script : %s", err)

@@ -11,7 +11,6 @@ import (
 	"github.com/tokenized/logger"
 	"github.com/tokenized/pkg/bitcoin"
 	"github.com/tokenized/pkg/wire"
-	"github.com/tokenized/txbuilder"
 
 	"github.com/pkg/errors"
 )
@@ -47,17 +46,17 @@ func NewInterpreter() *Interpreter {
 }
 
 func (i *Interpreter) Execute(ctx context.Context, script bitcoin.Script, tx *wire.MsgTx,
-	inputIndex int, inputValue uint64, hashCache *txbuilder.SigHashCache) error {
+	inputIndex int, inputValue uint64, hashCache *SigHashCache) error {
 	return i.ExecuteFull(ctx, script, tx, inputIndex, inputValue, hashCache, false)
 }
 
 func (i *Interpreter) ExecuteVerbose(ctx context.Context, script bitcoin.Script, tx *wire.MsgTx,
-	inputIndex int, inputValue uint64, hashCache *txbuilder.SigHashCache) error {
+	inputIndex int, inputValue uint64, hashCache *SigHashCache) error {
 	return i.ExecuteFull(ctx, script, tx, inputIndex, inputValue, hashCache, true)
 }
 
 func (i *Interpreter) ExecuteFull(ctx context.Context, script bitcoin.Script, tx *wire.MsgTx,
-	inputIndex int, inputValue uint64, hashCache *txbuilder.SigHashCache, verbose bool) error {
+	inputIndex int, inputValue uint64, hashCache *SigHashCache, verbose bool) error {
 
 	scriptBuf := bytes.NewReader(script)
 	codeScript := script
@@ -87,21 +86,21 @@ func (i *Interpreter) ExecuteFull(ctx context.Context, script bitcoin.Script, tx
 
 func (i *Interpreter) ExecuteOpCode(ctx context.Context, item *bitcoin.ScriptItem, itemIndex int,
 	scriptBuf *bytes.Reader, codeScript *bitcoin.Script, tx *wire.MsgTx, inputIndex int,
-	inputValue uint64, hashCache *txbuilder.SigHashCache) error {
+	inputValue uint64, hashCache *SigHashCache) error {
 	return i.ExecuteOpCodeFull(ctx, item, itemIndex, scriptBuf, codeScript, tx, inputIndex,
 		inputValue, hashCache, false)
 }
 
 func (i *Interpreter) ExecuteOpCodeVerbose(ctx context.Context, item *bitcoin.ScriptItem,
 	itemIndex int, scriptBuf *bytes.Reader, codeScript *bitcoin.Script, tx *wire.MsgTx,
-	inputIndex int, inputValue uint64, hashCache *txbuilder.SigHashCache) error {
+	inputIndex int, inputValue uint64, hashCache *SigHashCache) error {
 	return i.ExecuteOpCodeFull(ctx, item, itemIndex, scriptBuf, codeScript, tx, inputIndex,
 		inputValue, hashCache, true)
 }
 
 func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.ScriptItem,
 	itemIndex int, scriptBuf *bytes.Reader, codeScript *bitcoin.Script, tx *wire.MsgTx,
-	inputIndex int, inputValue uint64, hashCache *txbuilder.SigHashCache, verbose bool) error {
+	inputIndex int, inputValue uint64, hashCache *SigHashCache, verbose bool) error {
 
 	if !i.ifIsExecute() {
 		if verbose {
@@ -1161,13 +1160,13 @@ func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.Scrip
 			return errors.Wrapf(ErrScriptInvalid, "invalid signature: too short %d", b2Len)
 		}
 
-		hashType := txbuilder.SigHashType(b2[b2Len-1])
+		hashType := SigHashType(b2[b2Len-1])
 		signature, err := bitcoin.SignatureFromBytes(b2[:b2Len-1])
 		if err != nil {
 			return errors.Wrapf(ErrScriptInvalid, "invalid signature: %s", err)
 		}
 
-		sigHash, err := txbuilder.SignatureHash(tx, inputIndex, *codeScript, inputValue,
+		sigHash, err := SignatureHash(tx, inputIndex, *codeScript, inputValue,
 			hashType, hashCache)
 		if err != nil {
 			return errors.Wrapf(ErrScriptInvalid, "calculate sig hash: %s", err)

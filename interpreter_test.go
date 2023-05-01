@@ -4,13 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/hex"
-	"math/rand"
 	"testing"
 
 	"github.com/tokenized/logger"
 	"github.com/tokenized/pkg/bitcoin"
 	"github.com/tokenized/pkg/wire"
-	"github.com/tokenized/txbuilder"
 
 	"github.com/pkg/errors"
 )
@@ -87,7 +85,7 @@ func Test_Execute_Hex(t *testing.T) {
 				t.Fatalf("Failed to decode tx : %s", err)
 			}
 
-			hashCache := &txbuilder.SigHashCache{}
+			hashCache := &SigHashCache{}
 			interpreter := NewInterpreter()
 
 			if err := interpreter.Execute(ctx, tx.TxIn[tt.inputIndex].UnlockingScript, tx,
@@ -122,43 +120,4 @@ func Test_Execute_Hex(t *testing.T) {
 			}
 		})
 	}
-}
-
-func mockP2PKHInput(tx *txbuilder.TxBuilder, value uint64) (*bitcoin.Key, bitcoin.Script, error) {
-	key, _ := bitcoin.GenerateKey(bitcoin.MainNet)
-	lockingScript, _ := key.LockingScript()
-
-	hash := bitcoin.Hash32{}
-	rand.Read(hash[:])
-
-	if err := tx.AddInput(wire.OutPoint{hash, uint32(rand.Intn(10))}, lockingScript,
-		value); err != nil {
-		return nil, nil, errors.Wrap(err, "add input")
-	}
-
-	return &key, lockingScript, nil
-}
-
-func mockMultiP2PKHInput(tx *txbuilder.TxBuilder, value uint64,
-	required, total uint32) ([]bitcoin.Key, bitcoin.Script, error) {
-
-	keys := make([]bitcoin.Key, total)
-	publicKeys := make([]bitcoin.PublicKey, total)
-	for i := range publicKeys {
-		key, _ := bitcoin.GenerateKey(bitcoin.MainNet)
-		keys[i] = key
-		publicKeys[i] = key.PublicKey()
-	}
-	template, _ := bitcoin.NewMultiPKHTemplate(required, total)
-	lockingScript, _ := template.LockingScript(publicKeys)
-
-	hash := bitcoin.Hash32{}
-	rand.Read(hash[:])
-
-	if err := tx.AddInput(wire.OutPoint{hash, uint32(rand.Intn(10))}, lockingScript,
-		value); err != nil {
-		return nil, nil, errors.Wrap(err, "add input")
-	}
-
-	return keys, lockingScript, nil
 }
