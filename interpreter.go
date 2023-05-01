@@ -626,15 +626,13 @@ func (i *Interpreter) ExecuteOpCode(item *bitcoin.ScriptItem, itemIndex int,
 		if err != nil {
 			return errors.Wrapf(ErrScriptInvalid, "stack empty: %s", item)
 		}
-		n1 := decodeInteger(b1)
 
 		b2, err := i.popStack()
 		if err != nil {
 			return errors.Wrapf(ErrScriptInvalid, "stack empty: %s", item)
 		}
-		n2 := decodeInteger(b2)
 
-		if n1.Cmp(n2) == 0 {
+		if bytes.Equal(b1, b2) {
 			i.pushStack(encodePrimitiveInteger(1))
 		} else {
 			i.pushStack(encodePrimitiveInteger(0))
@@ -645,15 +643,13 @@ func (i *Interpreter) ExecuteOpCode(item *bitcoin.ScriptItem, itemIndex int,
 		if err != nil {
 			return errors.Wrapf(ErrScriptInvalid, "stack empty: %s", item)
 		}
-		n1 := decodeInteger(b1)
 
 		b2, err := i.popStack()
 		if err != nil {
 			return errors.Wrapf(ErrScriptInvalid, "stack empty: %s", item)
 		}
-		n2 := decodeInteger(b2)
 
-		if n1.Cmp(n2) != 0 {
+		if !bytes.Equal(b1, b2) {
 			i.err = errors.Wrapf(ErrVerifyFailed, "op code: %s", item)
 			i.scriptVerifyFailed = true
 			return nil
@@ -1375,6 +1371,10 @@ func (i *Interpreter) popAltStack() ([]byte, error) {
 }
 
 func isTrue(b []byte) bool {
+	if len(b) == 0 {
+		return false
+	}
+
 	i := decodeInteger(b)
 	return i.Cmp(big.NewInt(0)) != 0
 }
@@ -1459,7 +1459,7 @@ func padNumber(b []byte, size int) []byte {
 	}
 
 	result := make([]byte, size)
-	copy(result[size-l:], b)
+	copy(result, b)
 	println("padded", hex.EncodeToString(result))
 
 	// last := b[l-1]
