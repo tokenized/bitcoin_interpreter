@@ -28,6 +28,26 @@ const (
 	sigHashTypeMask = 0x1f
 )
 
+func (v SigHashType) HasForkID() bool {
+	return v&SigHashForkID == SigHashForkID
+}
+
+func (v SigHashType) HasAnyOneCanPay() bool {
+	return v&SigHashAnyOneCanPay == SigHashAnyOneCanPay
+}
+
+func (v SigHashType) HasSingle() bool {
+	return v&SigHashSingle == SigHashSingle
+}
+
+func (v SigHashType) HasNone() bool {
+	return v&SigHashNone == SigHashNone
+}
+
+func (v SigHashType) IsAll() bool {
+	return v&sigHashTypeMask == SigHashAll
+}
+
 func (v SigHashType) String() string {
 	var parts []string
 	if SigHashForkID&v != 0 {
@@ -36,7 +56,7 @@ func (v SigHashType) String() string {
 	if SigHashAnyOneCanPay&v != 0 {
 		parts = append(parts, "ANYONE_CAN_PAY")
 	}
-	switch v & 0x03 {
+	switch v & sigHashTypeMask {
 	case SigHashAll:
 		parts = append(parts, "ALL")
 	case SigHashNone:
@@ -169,8 +189,10 @@ func (shc *SigHashCache) HashOutputs(tx *wire.MsgTx) []byte {
 //   offline, or hardware wallets to compute the exact amount being spent, in addition to the final
 //   transaction fee. In the case the wallet if fed an invalid input amount, the real sighash will
 //   differ causing the produced signature to be invalid.
-func SignatureHash(tx *wire.MsgTx, index int, lockingScript []byte, opCodeSeparatorIndex int,
-	value uint64, hashType SigHashType, hashCache *SigHashCache) (*bitcoin.Hash32, error) {
+// opCodeSeparatorIndex of -1 means to ignore op code separators.
+func SignatureHash(tx *wire.MsgTx, index int, lockingScript bitcoin.Script,
+	opCodeSeparatorIndex int, value uint64, hashType SigHashType,
+	hashCache *SigHashCache) (*bitcoin.Hash32, error) {
 
 	codeScript, err := afterOpCodeSeparator(lockingScript, opCodeSeparatorIndex)
 	if err != nil {
@@ -188,8 +210,9 @@ func SignatureHash(tx *wire.MsgTx, index int, lockingScript []byte, opCodeSepara
 	return &hash, nil
 }
 
-func SignaturePreimage(tx *wire.MsgTx, index int, lockingScript []byte, opCodeSeparatorIndex int,
-	value uint64, hashType SigHashType, hashCache *SigHashCache) ([]byte, error) {
+func SignaturePreimage(tx *wire.MsgTx, index int, lockingScript bitcoin.Script,
+	opCodeSeparatorIndex int, value uint64, hashType SigHashType,
+	hashCache *SigHashCache) ([]byte, error) {
 
 	codeScript, err := afterOpCodeSeparator(lockingScript, opCodeSeparatorIndex)
 	if err != nil {
@@ -205,8 +228,8 @@ func SignaturePreimage(tx *wire.MsgTx, index int, lockingScript []byte, opCodeSe
 	return buf.Bytes(), nil
 }
 
-func writeSignatureHashPreimageBytes(w io.Writer, tx *wire.MsgTx, index int, codeScript []byte,
-	value uint64, hashType SigHashType, hashCache *SigHashCache) error {
+func writeSignatureHashPreimageBytes(w io.Writer, tx *wire.MsgTx, index int,
+	codeScript bitcoin.Script, value uint64, hashType SigHashType, hashCache *SigHashCache) error {
 
 	// As a sanity check, ensure the passed input index for the transaction is valid.
 	if index > len(tx.TxIn)-1 {
@@ -222,16 +245,14 @@ func writeSignatureHashPreimageBytes(w io.Writer, tx *wire.MsgTx, index int, cod
 	var zeroHash [32]byte
 
 	// If anyone can pay is active we just write zeroes for the prev outs hash.
-	if hashType&SigHashAnyOneCanPay == 0 {
-		w.Write(hashCache.HashPrevOuts(tx))
-	} else {
+	if hashType.HasAnyOneCanPay() {
 		w.Write(zeroHash[:])
+	} else {
+		w.Write(hashCache.HashPrevOuts(tx))
 	}
 
 	// If the sighash is anyone can pay, single, or none we write all zeroes for the sequence hash.
-	if hashType&SigHashAnyOneCanPay == 0 &&
-		hashType&sigHashTypeMask != SigHashSingle &&
-		hashType&sigHashTypeMask != SigHashNone {
+	if !hashType.HasAnyOneCanPay() && !hashType.HasSingle() && !hashType.HasNone() {
 		w.Write(hashCache.HashSequence(tx))
 	} else {
 		w.Write(zeroHash[:])
@@ -250,9 +271,12 @@ func writeSignatureHashPreimageBytes(w io.Writer, tx *wire.MsgTx, index int, cod
 
 	// If the current signature mode is single, or none, then we'll serialize and add only the
 	//   target output index to the signature pre-image.
-	if hashType&SigHashSingle != SigHashSingle && hashType&SigHashNone != SigHashNone {
+	if hashType.IsAll() {
 		w.Write(hashCache.HashOutputs(tx))
-	} else if hashType&sigHashTypeMask == SigHashSingle && index < len(tx.TxOut) {
+	} else if hashType.HasSingle() {
+		if index >= len(tx.TxOut) {
+			return fmt.Errorf("SigHashSingle does not contain output at input index : %d", index)
+		}
 		var b bytes.Buffer
 		tx.TxOut[index].Serialize(&b, 0, 0)
 		w.Write(bitcoin.DoubleSha256(b.Bytes()))
@@ -262,7 +286,7 @@ func writeSignatureHashPreimageBytes(w io.Writer, tx *wire.MsgTx, index int, cod
 
 	// Finally, write out the transaction's locktime, and the sig hash type.
 	binary.Write(w, binary.LittleEndian, tx.LockTime)
-	binary.Write(w, binary.LittleEndian, uint32(hashType|SigHashForkID))
+	binary.Write(w, binary.LittleEndian, uint32(hashType))
 
 	return nil
 }
@@ -270,7 +294,7 @@ func writeSignatureHashPreimageBytes(w io.Writer, tx *wire.MsgTx, index int, cod
 // afterOpCodeSeparator returns the portion of the locking script after the last OP_CODESEPARATOR.
 // NOTE: This is only correct if the last OP_CODESEPARATOR is actually executed when the script is
 // executed, so there is room for error here depending on the locking script. --ce
-func afterOpCodeSeparator(lockingScript bitcoin.Script, index int) ([]byte, error) {
+func afterOpCodeSeparator(lockingScript bitcoin.Script, index int) (bitcoin.Script, error) {
 	if index == -1 {
 		return lockingScript, nil
 	}

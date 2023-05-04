@@ -84,13 +84,13 @@ func init() {
 		Script_ReverseEndian32 = append(Script_ReverseEndian32, bitcoin.OP_CAT)
 	}
 
-	// Script_FixNegative changes the top item on the stack, if it's high bit is set, to a postive
+	// Script_FixNegative changes the top item on the stack, if it's high bit is set, to a positive
 	// by adding the zero byte.
 	Script_FixNegative = bitcoin.ConcatScript(
 		bitcoin.OP_DUP,
-		bitcoin.OP_0, bitcoin.OP_GREATERTHAN,
+		bitcoin.OP_0, bitcoin.OP_LESSTHAN,
 		bitcoin.OP_IF,
-		bitcoin.OP_0, bitcoin.OP_CAT,
+		bitcoin.PushData([]byte{0x00}), bitcoin.OP_CAT,
 		bitcoin.OP_ENDIF,
 	)
 
@@ -123,12 +123,13 @@ func init() {
 		bitcoin.OP_DUP,
 		bitcoin.BytePushData(0x80), bitcoin.OP_AND,
 		bitcoin.OP_0, bitcoin.OP_EQUAL, // 0x80 will be "false" so check for exactly equal to zero
-		bitcoin.OP_ROT,
-		bitcoin.OP_SWAP, bitcoin.OP_CAT, // put the next byte back
 
-		bitcoin.OP_SWAP,                               // Get && 0x80 back to the top
-		bitcoin.OP_NOTIF,                              // If high bit set (and result is not zero)
-		bitcoin.OP_0, bitcoin.OP_SWAP, bitcoin.OP_CAT, // put the zero back at the beginning
+		bitcoin.OP_3, bitcoin.OP_ROLL,
+		bitcoin.OP_CAT, // put the next byte back
+
+		bitcoin.OP_SWAP,                                                 // Get && 0x80 back to the top
+		bitcoin.OP_NOTIF,                                                // If high bit set (and result is not zero)
+		bitcoin.PushData([]byte{0x00}), bitcoin.OP_SWAP, bitcoin.OP_CAT, // put the zero back at the beginning
 		bitcoin.OP_ENDIF,
 
 		bitcoin.OP_ELSE,
@@ -162,7 +163,7 @@ func init() {
 	// Output: The top stack item will be a DER encoded signature that works with OP_CHECKSIG.
 	Script_EncodeFullSignature = bitcoin.ConcatScript(
 		Script_EncodeSignatureValue,                                        // Encode S
-		bitcoin.PushData(Value_Encoded_R), bitcoin.OP_SWAP, bitcoin.OP_CAT, // bitcoin.ConcatScriptenate pre-encoded R in front of S
+		bitcoin.PushData(Value_Encoded_R), bitcoin.OP_SWAP, bitcoin.OP_CAT, // concat pre-encoded R in front of S
 		bitcoin.OP_SIZE, bitcoin.OP_SWAP, bitcoin.OP_CAT, // prepend size
 		bitcoin.BytePushData(0x30), bitcoin.OP_SWAP, bitcoin.OP_CAT, // prepend header byte 0x30
 	)
@@ -180,26 +181,85 @@ func init() {
 	// S = S * invK
 	// S = S mod N
 	Script_ComputeS = bitcoin.ConcatScript(
+		// Stack:
+		//  Sig Hash
+
 		Script_FixNegative,
+		// Stack:
+		//  Sig Hash (with leading zero if needed to retain positive sign)
 
+		// S = private key * R
+		//
 		// We save a few bytes of script here by pre-calculating this rather than including the two
-		// values.
+		// values and multiplying. R is used later, but must be big endian so is smaller to just
+		// push in that format then to try to retain this value and reverse it.
 		// bitcoin.PushData(Value_R), bitcoin.PushData(Value_Key), bitcoin.OP_MUL, // S = private key * R
-		bitcoin.PushData(Value_Key_R_Mul), // S = private key * R
+		//
+		// Stack:
+		//  Sig Hash
+		bitcoin.PushData(Value_Key_R_Mul),
 
-		bitcoin.OP_ADD,                                   // S = S + hash (OP_2 OP_ROLL to get sig hash from before R)
+		// Stack:
+		//  Private key * R
+		//  Sig Hash
+		bitcoin.OP_ADD, // S = S + hash
+
+		// Stack:
+		//  S
 		bitcoin.PushData(Value_InverseK), bitcoin.OP_MUL, // S = S * invK
+
+		// S = S mod N
+		// Stack:
+		//  S
 		bitcoin.PushData(Value_CurveN),
-		bitcoin.OP_DUP, bitcoin.OP_ROT, bitcoin.OP_SWAP, bitcoin.OP_MOD, // S = S mod N (OP_SWAP so N is the denominator)
-		bitcoin.OP_DUP,
-		bitcoin.OP_2, bitcoin.OP_3, bitcoin.OP_PICK, bitcoin.OP_DIV, // Curve N / 2
-		bitcoin.OP_LESSTHAN, // if S is less than half curve N then add curve N
-		bitcoin.OP_IF,
-		bitcoin.OP_SWAP,
-		bitcoin.OP_SUB,
+
+		// Stack:
+		//  Curve N
+		//  S
+		bitcoin.OP_TUCK, // Copy Curve N to under S
+
+		// Stack:
+		//  Curve N
+		//  S
+		//  Curve N
+		bitcoin.OP_MOD, // S mod N
+
+		// If S is greater than half curve N (high S) then change to Curve N minus S
+		// Stack:
+		//  S
+		//  Curve N
+		bitcoin.OP_DUP, // Duplicate S
+
+		// Stack:
+		//  S
+		//  S
+		//  Curve N
+		bitcoin.OP_2, bitcoin.OP_PICK, // Copy Curve N to the top of the stack
+
+		// Stack:
+		//  Curve N
+		//  S
+		//  S
+		//  Curve N
+		bitcoin.OP_2, bitcoin.OP_DIV, // Curve N / 2
+
+		// Stack:
+		//  Curve N / 2
+		//  S
+		//  S
+		//  Curve N
+		bitcoin.OP_GREATERTHAN, bitcoin.OP_IF, // S is greater than Curve N
+
+		// Stack:
+		//  S
+		//  Curve N
+		bitcoin.OP_SUB, // Curve N minus S
 		bitcoin.OP_ELSE,
-		bitcoin.OP_NIP,
+		bitcoin.OP_NIP, // Remove Curve N from stack (second item)
 		bitcoin.OP_ENDIF,
+
+		// Stack:
+		//  S
 	)
 
 	Script_CheckSignaturePreimage_Pre = bitcoin.ConcatScript(
@@ -213,13 +273,13 @@ func init() {
 		bitcoin.OP_DUP, // Copy preimage
 
 		// Calculate offset 8 before the end.
-		bitcoin.OP_SIZE, bitcoin.BytePushData(8), bitcoin.OP_SWAP, bitcoin.OP_SUB,
+		bitcoin.OP_SIZE, bitcoin.BytePushData(8), bitcoin.OP_SUB,
 
 		// Drop sig hash type and lock time that are after the outputs hash.
 		bitcoin.OP_SPLIT, bitcoin.OP_DROP,
 
 		// Calculate offset 32 before the end.
-		bitcoin.OP_SIZE, bitcoin.BytePushData(32), bitcoin.OP_SWAP, bitcoin.OP_SUB,
+		bitcoin.OP_SIZE, bitcoin.BytePushData(32), bitcoin.OP_SUB,
 
 		// Drop everything before the outputs hash.
 		bitcoin.OP_SPLIT, bitcoin.OP_SWAP, bitcoin.OP_DROP,
@@ -229,13 +289,13 @@ func init() {
 		bitcoin.OP_DUP, // Copy preimage
 
 		// Calculate offset 40 before the end.
-		bitcoin.OP_SIZE, bitcoin.BytePushData(40), bitcoin.OP_SWAP, bitcoin.OP_SUB,
+		bitcoin.OP_SIZE, bitcoin.BytePushData(40), bitcoin.OP_SUB,
 
 		// Drop sig hash type, lock time, and outputs hash that are after the input sequence.
 		bitcoin.OP_SPLIT, bitcoin.OP_DROP,
 
 		// Calculate offset 4 before the end.
-		bitcoin.OP_SIZE, bitcoin.BytePushData(4), bitcoin.OP_SWAP, bitcoin.OP_SUB,
+		bitcoin.OP_SIZE, bitcoin.BytePushData(4), bitcoin.OP_SUB,
 
 		// Drop everything before the input sequence.
 		bitcoin.OP_SPLIT, bitcoin.OP_SWAP, bitcoin.OP_DROP,
@@ -245,13 +305,13 @@ func init() {
 		bitcoin.OP_DUP, // Copy preimage
 
 		// Calculate offset 4 before the end.
-		bitcoin.OP_SIZE, bitcoin.BytePushData(4), bitcoin.OP_SWAP, bitcoin.OP_SUB,
+		bitcoin.OP_SIZE, bitcoin.BytePushData(4), bitcoin.OP_SUB,
 
 		// Drop sig hash type.
 		bitcoin.OP_SPLIT, bitcoin.OP_DROP,
 
 		// Calculate offset 4 before the end.
-		bitcoin.OP_SIZE, bitcoin.BytePushData(4), bitcoin.OP_SWAP, bitcoin.OP_SUB,
+		bitcoin.OP_SIZE, bitcoin.BytePushData(4), bitcoin.OP_SUB,
 
 		// Drop everything before the lock time.
 		bitcoin.OP_SPLIT, bitcoin.OP_SWAP, bitcoin.OP_DROP,

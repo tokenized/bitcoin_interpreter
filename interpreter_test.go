@@ -13,7 +13,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-func Test_Execute_Hex(t *testing.T) {
+func Test_Execute_Unlock_Hex(t *testing.T) {
 	ctx := logger.ContextWithLogger(context.Background(), true, false, "")
 
 	tests := []struct {
@@ -117,6 +117,186 @@ func Test_Execute_Hex(t *testing.T) {
 				}
 			} else if interpreter.Error() != nil {
 				t.Errorf("Interpreter error should be nil : %s", interpreter.Error())
+			}
+		})
+	}
+}
+
+func Test_Execute_Stack(t *testing.T) {
+	ctx := logger.ContextWithLogger(context.Background(), true, false, "")
+
+	tests := []struct {
+		name   string
+		script string
+		stack  []string
+	}{
+		{
+			name:   "OP_NUM2BIN zero to 32",
+			script: "OP_0 32 OP_NUM2BIN",
+			stack: []string{
+				"0000000000000000000000000000000000000000000000000000000000000000",
+			},
+		},
+		{
+			name:   "OP_BIN2NUM no op",
+			script: "0xabcdef00 OP_BIN2NUM",
+			stack: []string{
+				"abcdef00",
+			},
+		},
+		{
+			name:   "OP_BIN2NUM remove zero",
+			script: "0xabcd7f00 OP_BIN2NUM",
+			stack: []string{
+				"abcd7f",
+			},
+		},
+		// {
+		// 	name:   "OP_BIN2NUM reduce",
+		// 	script: "0xabcdef4280 OP_BIN2NUM",
+		// 	stack: []string{
+		// 		"abcdefc2",
+		// 	},
+		// },
+		{
+			name:   "OP_MUL_1",
+			script: "OP_5 OP_6 OP_MUL",
+			stack: []string{
+				"1e",
+			},
+		},
+		{
+			name:   "OP_MUL_2",
+			script: "0xa0a0 0xf5e4 OP_MUL",
+			stack: []string{
+				"20b9dd0c",
+			},
+		},
+		{
+			name:   "OP_MUL_3",
+			script: "0x062609 0x26033204 OP_MUL",
+			stack: []string{
+				"e4b6f9a16126",
+			},
+		},
+		{
+			name:   "OP_MUL_4",
+			script: "0x06260934 0x26033204 OP_MUL",
+			stack: []string{
+				"e4b6f959054fda00",
+			},
+		},
+		{
+			name:   "OP_DIV_1",
+			script: "0xaf775318 0x011bf485 OP_DIV",
+			stack: []string{
+				"84",
+			},
+		},
+		{
+			name:   "OP_MOD_1",
+			script: "0xaf775318 0x011bf485 OP_MOD",
+			stack: []string{
+				"ab0b8300",
+			},
+		},
+		{
+			name:   "OP_DIV_2",
+			script: "0xaf775318 0x011b OP_DIV",
+			stack: []string{
+				"9de600",
+			},
+		},
+		{
+			name:   "OP_MOD_2",
+			script: "0xaf775318 0x011b OP_MOD",
+			stack: []string{
+				"1202",
+			},
+		},
+		{
+			name:   "OP_DIV_3",
+			script: "OP_15 OP_4 OP_DIV",
+			stack: []string{
+				"03",
+			},
+		},
+		{
+			name:   "OP_MOD_3",
+			script: "OP_15 OP_4 OP_MOD",
+			stack: []string{
+				"03",
+			},
+		},
+		{
+			name:   "OP_DIV_4",
+			script: "0xbbf05d03 0x4e67ab21 OP_DIV",
+			stack: []string{
+				"",
+			},
+		},
+		{
+			name:   "OP_MOD_4",
+			script: "0xbbf05d03 0x4e67ab21 OP_MOD",
+			stack: []string{
+				"bbf05d03",
+			},
+		},
+		{
+			name:   "OP_DIV_5",
+			script: "0xc0e1e400 OP_4 OP_DIV",
+			stack: []string{
+				"703839",
+			},
+		},
+		{
+			name:   "OP_MOD_5",
+			script: "0xc0e1e400 OP_4 OP_MOD",
+			stack: []string{
+				"",
+			},
+		},
+		// {
+		// 	name:   "OP_DIV_NegativeHighBit",
+		// 	script: "0x0544 OP_NEGATE OP_4 OP_DIV",
+		// 	stack: []string{
+		// 		"8088",
+		// 	},
+		// },
+		// {
+		// 	name:   "OP_MOD_NegativeHighBit",
+		// 	script: "0x0544 OP_4 OP_MOD",
+		// 	stack: []string{
+		// 		"",
+		// 	},
+		// },
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			script, err := bitcoin.StringToScript(tt.script)
+			if err != nil {
+				t.Fatalf("Failed to decode script : %s", err)
+			}
+
+			interpreter := NewInterpreter()
+
+			if err := interpreter.ExecuteVerbose(ctx, script, nil, 0, 0, nil); err != nil {
+				t.Errorf("Failed to execute script : %s", err)
+			}
+
+			t.Logf("Result stack: \n%s", interpreter.StackString())
+
+			stack := interpreter.StackItems()
+			if len(stack) != len(tt.stack) {
+				t.Fatalf("Wrong resulting stack size : got %d, want %d", len(stack), len(tt.stack))
+			}
+
+			for i, item := range stack {
+				if hex.EncodeToString(item) != tt.stack[i] {
+					t.Errorf("Wrong item at depth %d in stack :\n  got  : %x\n  want : %s", i, item,
+						tt.stack)
+				}
 			}
 		})
 	}

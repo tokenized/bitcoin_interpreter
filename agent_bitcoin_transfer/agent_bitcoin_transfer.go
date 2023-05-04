@@ -1,7 +1,8 @@
-package agent_bitcoin_tranfer
+package agent_bitcoin_transfer
 
 import (
 	"bytes"
+	"context"
 
 	"github.com/tokenized/bitcoin_interpreter"
 	"github.com/tokenized/bitcoin_interpreter/check_signature_preimage"
@@ -71,8 +72,8 @@ func AgentBitcoinTransferScript(agentLockingScript, approveLockingScript,
 	), nil
 }
 
-func UnlockAgentBitcoinTransferApprove(tx *wire.MsgTx, inputIndex int, inputValue uint64,
-	inputLockingScript bitcoin.Script,
+func UnlockAgentBitcoinTransferApprove(ctx context.Context, tx *wire.MsgTx, inputIndex int,
+	inputValue uint64, inputLockingScript bitcoin.Script,
 	agentUnlockingScript bitcoin.Script) (bitcoin.Script, error) {
 
 	// Use single sig hash type so that only the corresponding output's hash is checked against the
@@ -80,14 +81,14 @@ func UnlockAgentBitcoinTransferApprove(tx *wire.MsgTx, inputIndex int, inputValu
 	sigHashType := bitcoin_interpreter.SigHashForkID | bitcoin_interpreter.SigHashSingle
 	hashCache := &bitcoin_interpreter.SigHashCache{}
 
-	preimage, err := bitcoin_interpreter.SignaturePreimage(tx, inputIndex, inputLockingScript, 1,
-		inputValue, sigHashType, hashCache)
+	preimageUnlockingScript, err := check_signature_preimage.UnlockSignaturePreimageScript(ctx, tx,
+		inputIndex, inputLockingScript, 1, inputValue, sigHashType, hashCache)
 	if err != nil {
 		return nil, errors.Wrap(err, "preimage")
 	}
 
 	return bitcoin.ConcatScript(
-		bitcoin.PushData(preimage), // Preimage
+		preimageUnlockingScript, // verify preimage
 
 		bitcoin.OP_0, // 0 for approve function
 		agentUnlockingScript,
@@ -95,8 +96,8 @@ func UnlockAgentBitcoinTransferApprove(tx *wire.MsgTx, inputIndex int, inputValu
 	), nil
 }
 
-func UnlockAgentBitcoinTransferRefund(tx *wire.MsgTx, inputIndex int, inputValue uint64,
-	inputLockingScript bitcoin.Script,
+func UnlockAgentBitcoinTransferRefund(ctx context.Context, tx *wire.MsgTx, inputIndex int,
+	inputValue uint64, inputLockingScript bitcoin.Script,
 	agentUnlockingScript bitcoin.Script) (bitcoin.Script, error) {
 
 	// Use single sig hash type so that only the corresponding output's hash is checked against the
@@ -104,14 +105,14 @@ func UnlockAgentBitcoinTransferRefund(tx *wire.MsgTx, inputIndex int, inputValue
 	sigHashType := bitcoin_interpreter.SigHashForkID | bitcoin_interpreter.SigHashSingle
 	hashCache := &bitcoin_interpreter.SigHashCache{}
 
-	preimage, err := bitcoin_interpreter.SignaturePreimage(tx, inputIndex, inputLockingScript, 1,
-		inputValue, sigHashType, hashCache)
+	preimageUnlockingScript, err := check_signature_preimage.UnlockSignaturePreimageScript(ctx, tx,
+		inputIndex, inputLockingScript, 1, inputValue, sigHashType, hashCache)
 	if err != nil {
 		return nil, errors.Wrap(err, "preimage")
 	}
 
 	return bitcoin.ConcatScript(
-		bitcoin.PushData(preimage), // Preimage
+		preimageUnlockingScript, // verify preimage
 
 		bitcoin.OP_1, // 1 for refund function
 		agentUnlockingScript,
@@ -119,8 +120,8 @@ func UnlockAgentBitcoinTransferRefund(tx *wire.MsgTx, inputIndex int, inputValue
 	), nil
 }
 
-func UnlockAgentBitcoinTransferRecover(tx *wire.MsgTx, inputIndex int, inputValue uint64,
-	inputLockingScript bitcoin.Script,
+func UnlockAgentBitcoinTransferRecover(ctx context.Context, tx *wire.MsgTx, inputIndex int,
+	inputValue uint64, inputLockingScript bitcoin.Script,
 	recoverUnlockingScript bitcoin.Script) (bitcoin.Script, error) {
 
 	// Use single sig hash type so that only the corresponding output's hash is checked against the
@@ -128,14 +129,14 @@ func UnlockAgentBitcoinTransferRecover(tx *wire.MsgTx, inputIndex int, inputValu
 	sigHashType := bitcoin_interpreter.SigHashForkID | bitcoin_interpreter.SigHashSingle
 	hashCache := &bitcoin_interpreter.SigHashCache{}
 
-	preimage, err := bitcoin_interpreter.SignaturePreimage(tx, inputIndex, inputLockingScript, 1,
-		inputValue, sigHashType, hashCache)
+	preimageUnlockingScript, err := check_signature_preimage.UnlockSignaturePreimageScript(ctx, tx,
+		inputIndex, inputLockingScript, 1, inputValue, sigHashType, hashCache)
 	if err != nil {
 		return nil, errors.Wrap(err, "preimage")
 	}
 
 	return bitcoin.ConcatScript(
-		bitcoin.PushData(preimage), // Preimage
+		preimageUnlockingScript, // verify preimage
 
 		recoverUnlockingScript,
 		bitcoin.OP_1, // 1 for recover branch

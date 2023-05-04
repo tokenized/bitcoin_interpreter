@@ -16,16 +16,15 @@ import (
 )
 
 var (
-	ErrStackEmpty            = errors.New("Stack Empty")
-	ErrAltStackEmpty         = errors.New("Alt Stack Empty")
-	ErrScriptInvalid         = errors.New("Script Invalid")
-	ErrVerifyFailed          = errors.New("Verify Failed")
-	ErrSignatureDidNotVerify = errors.New("Signature Did Not Verify")
-	ErrNotUnlocked           = errors.New("Not Unlocked")
-	ErrOpCodeDisabled        = errors.New("Op Code Disabled")
-	ErrNoOpCode              = errors.New("No Op Code")
-	ErrBadOpCode             = errors.New("Bad Op Code")
-	ErrNotImplemented        = errors.New("Not Implemented")
+	ErrStackEmpty         = errors.New("Stack Empty")
+	ErrAltStackEmpty      = errors.New("Alt Stack Empty")
+	ErrScriptInvalid      = errors.New("Script Invalid")
+	ErrVerifyFailed       = errors.New("Verify Failed")
+	ErrMalformedSignature = errors.New("Malformed Signature")
+	ErrNotUnlocked        = errors.New("Not Unlocked")
+	ErrOpCodeDisabled     = errors.New("Op Code Disabled")
+	ErrBadOpCode          = errors.New("Bad Op Code")
+	ErrNotImplemented     = errors.New("Not Implemented")
 )
 
 type Interpreter struct {
@@ -248,6 +247,10 @@ func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.Scrip
 			return errors.Wrapf(ErrScriptInvalid, "stack empty: %s", item)
 		}
 
+		if len(b) > 1 {
+			return errors.Wrapf(ErrScriptInvalid, "Not minimal if: %s", item)
+		}
+
 		execute := isTrue(b)
 		if verbose {
 			logger.VerboseWithFields(ctx, []logger.Field{
@@ -265,6 +268,10 @@ func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.Scrip
 		b, err := i.popStack()
 		if err != nil {
 			return errors.Wrapf(ErrScriptInvalid, "stack empty: %s", item)
+		}
+
+		if len(b) > 1 {
+			return errors.Wrapf(ErrScriptInvalid, "Not minimal if: %s", item)
 		}
 
 		execute := !isTrue(b)
@@ -575,7 +582,7 @@ func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.Scrip
 
 		i.pushStack(b)
 
-	case bitcoin.OP_ROT: // Move the top stack item to before the third stack item.
+	case bitcoin.OP_ROT:
 		b1, err := i.popStack()
 		if err != nil {
 			return errors.Wrapf(ErrScriptInvalid, "stack empty: %s", item)
@@ -591,9 +598,9 @@ func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.Scrip
 			return errors.Wrapf(ErrScriptInvalid, "stack empty: %s", item)
 		}
 
+		i.pushStack(b2)
 		i.pushStack(b1)
 		i.pushStack(b3)
-		i.pushStack(b2)
 
 	case bitcoin.OP_SWAP: // Reverse the order of the top two stack items
 		b1, err := i.popStack()
@@ -831,18 +838,18 @@ func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.Scrip
 
 		i.pushStack(encodeInteger(n1.Add(n1, n2)))
 
-	case bitcoin.OP_SUB:
-		b1, err := i.popStack()
-		if err != nil {
-			return errors.Wrapf(ErrScriptInvalid, "stack empty: %s", item)
-		}
-		n1 := decodeInteger(b1)
-
+	case bitcoin.OP_SUB: // second stack item minus top stack item
 		b2, err := i.popStack()
 		if err != nil {
 			return errors.Wrapf(ErrScriptInvalid, "stack empty: %s", item)
 		}
 		n2 := decodeInteger(b2)
+
+		b1, err := i.popStack()
+		if err != nil {
+			return errors.Wrapf(ErrScriptInvalid, "stack empty: %s", item)
+		}
+		n1 := decodeInteger(b1)
 
 		i.pushStack(encodeInteger(n1.Sub(n1, n2)))
 
@@ -861,39 +868,40 @@ func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.Scrip
 
 		i.pushStack(encodeInteger(n1.Mul(n1, n2)))
 
-	case bitcoin.OP_DIV:
-		b1, err := i.popStack()
-		if err != nil {
-			return errors.Wrapf(ErrScriptInvalid, "stack empty: %s", item)
-		}
-		n1 := decodeInteger(b1)
-
+	case bitcoin.OP_DIV: // second stack item divided by top stack item
 		b2, err := i.popStack()
 		if err != nil {
 			return errors.Wrapf(ErrScriptInvalid, "stack empty: %s", item)
 		}
 		n2 := decodeInteger(b2)
 
-		if n2.Cmp(big.NewInt(0)) == 0 {
+		b1, err := i.popStack()
+		if err != nil {
+			return errors.Wrapf(ErrScriptInvalid, "stack empty: %s", item)
+		}
+		n1 := decodeInteger(b1)
+
+		if n2.Sign() == 0 {
 			return errors.Wrapf(ErrScriptInvalid, "divide by zero: %s", item)
 		}
 
-		i.pushStack(encodeInteger(n1.Div(n1, n2)))
+		r := n1.Div(n1, n2)
+		i.pushStack(encodeInteger(r))
 
-	case bitcoin.OP_MOD: // Divide a by b and put the remainder on the stack
-		b1, err := i.popStack()
-		if err != nil {
-			return errors.Wrapf(ErrScriptInvalid, "stack empty: %s", item)
-		}
-		n1 := decodeInteger(b1)
-
+	case bitcoin.OP_MOD: // Divide second stack item by top stack item and put the remainder on the stack
 		b2, err := i.popStack()
 		if err != nil {
 			return errors.Wrapf(ErrScriptInvalid, "stack empty: %s", item)
 		}
 		n2 := decodeInteger(b2)
 
-		if n2.Cmp(big.NewInt(0)) == 0 {
+		b1, err := i.popStack()
+		if err != nil {
+			return errors.Wrapf(ErrScriptInvalid, "stack empty: %s", item)
+		}
+		n1 := decodeInteger(b1)
+
+		if n2.Sign() == 0 {
 			return errors.Wrapf(ErrScriptInvalid, "divide by zero: %s", item)
 		}
 
@@ -1110,27 +1118,27 @@ func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.Scrip
 	case bitcoin.OP_LESSTHAN, bitcoin.OP_GREATERTHAN, bitcoin.OP_LESSTHANOREQUAL,
 		bitcoin.OP_GREATERTHANOREQUAL:
 
-		b1, err := i.popStack()
-		if err != nil {
-			return errors.Wrapf(ErrScriptInvalid, "stack empty: %s", item)
-		}
-		n1 := decodeInteger(b1)
-
 		b2, err := i.popStack()
 		if err != nil {
 			return errors.Wrapf(ErrScriptInvalid, "stack empty: %s", item)
 		}
 		n2 := decodeInteger(b2)
 
+		b1, err := i.popStack()
+		if err != nil {
+			return errors.Wrapf(ErrScriptInvalid, "stack empty: %s", item)
+		}
+		n1 := decodeInteger(b1)
+
 		switch item.OpCode {
-		case bitcoin.OP_LESSTHAN:
+		case bitcoin.OP_LESSTHAN: // second stack item is less than top stack item
 			if n1.Cmp(n2) < 0 {
 				i.pushStack(encodePrimitiveInteger(1))
 			} else {
 				i.pushStack(encodePrimitiveInteger(0))
 			}
 
-		case bitcoin.OP_GREATERTHAN:
+		case bitcoin.OP_GREATERTHAN: // second stack item is greater than top stack item
 			if n1.Cmp(n2) > 0 {
 				i.pushStack(encodePrimitiveInteger(1))
 			} else {
@@ -1215,7 +1223,7 @@ func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.Scrip
 		hashType := SigHashType(b2[b2Len-1])
 		signature, err := bitcoin.SignatureFromBytes(b2[:b2Len-1])
 		if err != nil {
-			return errors.Wrapf(ErrScriptInvalid, "invalid signature: %s", err)
+			return errors.Wrap(ErrMalformedSignature, err.Error())
 		}
 
 		sigHash, err := SignatureHash(tx, inputIndex, *codeScript, -1, inputValue, hashType,
@@ -1229,7 +1237,9 @@ func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.Scrip
 			if verified {
 				logger.Verbose(ctx, "Sig verified")
 			} else {
-				logger.Verbose(ctx, "Sig not verified")
+				logger.InfoWithFields(ctx, []logger.Field{
+					logger.Formatter("sig_hash", "%x", sigHash[:]),
+				}, "Sig not verified")
 			}
 		}
 
@@ -1476,67 +1486,58 @@ func isTrue(b []byte) bool {
 }
 
 func encodePrimitiveInteger(value int) []byte {
-	// Encode to little endian.  The maximum number of encoded bytes is 9
-	// (8 bytes for max int64 plus a potential byte for sign extension).
-	result := make([]byte, 0, 10)
-	for value > 0 {
-		result = append(result, byte(value&0xff))
-		value >>= 8
+	return encodeInteger(new(big.Int).SetInt64(int64(value)))
+}
+
+func encodeInteger(value *big.Int) []byte {
+	if value.Sign() == 0 {
+		return nil
 	}
 
-	if len(result) == 0 {
-		// zero value
-		result = append(result, 0)
-		return result
-	}
+	var result []byte
+	isNegative := value.Sign() < 0
+	remaining := new(big.Int).Set(value)
+	remaining.Abs(remaining)
+	byteMask := new(big.Int).SetBytes([]byte{0xff})
+	for {
+		lastByte := byte(new(big.Int).And(remaining, byteMask).Int64())
+		remaining.Rsh(remaining, 8)
 
-	// When the most significant byte already has the high bit set, an
-	// additional high byte is required to indicate whether the number is
-	// negative or positive.  The additional byte is removed when converting
-	// back to an integral and its high bit is used to denote the sign.
-	//
-	// Otherwise, when the most significant byte does not already have the
-	// high bit set, use it to indicate the value is negative, if needed.
-	if result[len(result)-1]&0x80 != 0 {
-		extraByte := byte(0x00)
-		result = append(result, extraByte)
+		if remaining.Sign() != 0 {
+			result = append(result, lastByte)
+			continue
+		}
+
+		// remaining is zero
+		if lastByte&0x80 == 0x80 {
+			result = append(result, lastByte)
+			if isNegative {
+				result = append(result, 0x80)
+			} else {
+				result = append(result, 0x00)
+			}
+		} else {
+			if isNegative {
+				result = append(result, lastByte|0x80)
+			} else {
+				result = append(result, lastByte)
+			}
+		}
+
+		break
 	}
 
 	return result
 }
 
-func encodeInteger(value *big.Int) []byte {
-	// Encode to little endian.  The maximum number of encoded bytes is 9
-	// (8 bytes for max int64 plus a potential byte for sign extension).
-	result := make([]byte, 0, 10)
-	zero := big.NewInt(0)
-	for value.Cmp(zero) > 0 {
-		// result = append(result, byte(value&0xff))
-		// value >>= 8
-		lastByte := big.NewInt(0xff)
-		lastByte.And(value, lastByte)
-		value.Rsh(value, 8)
-		result = append(result, byte(lastByte.Int64()))
+func reverseEndian(b []byte) []byte {
+	l := len(b)
+	result := make([]byte, l)
+	r := l - 1
+	for _, v := range b {
+		result[r] = v
+		r--
 	}
-
-	if len(result) == 0 {
-		// zero value
-		result = append(result, 0)
-		return result
-	}
-
-	// When the most significant byte already has the high bit set, an
-	// additional high byte is required to indicate whether the number is
-	// negative or positive.  The additional byte is removed when converting
-	// back to an integral and its high bit is used to denote the sign.
-	//
-	// Otherwise, when the most significant byte does not already have the
-	// high bit set, use it to indicate the value is negative, if needed.
-	if result[len(result)-1]&0x80 != 0 {
-		extraByte := byte(0x00)
-		result = append(result, extraByte)
-	}
-
 	return result
 }
 
@@ -1556,37 +1557,33 @@ func padNumber(b []byte, size int) []byte {
 	result := make([]byte, size)
 	copy(result, b)
 
-	// last := b[l-1]
-	// if last&0x80 != 0 {
-	// 	result[l-1] &= 0x7f
-	// 	result[size-1] = 0x80
-	// }
-
 	return result
 }
 
 func decodeInteger(b []byte) *big.Int {
-	result := &big.Int{}
-	for i, val := range b {
-		// result |= int64(val) << uint8(8*i)
-		v := big.NewInt(int64(val))
-		s := uint(8 * i)
-		l := v.Lsh(v, s)
-		result.Or(result, l)
+
+	result := new(big.Int).SetInt64(0)
+	l := len(b)
+	if l == 0 {
+		return result
+	}
+	for i, bt := range b[:l-1] {
+		byt := new(big.Int).SetBytes([]byte{bt})
+		byt.Lsh(byt, uint(i*8))
+		result.Add(result, byt)
 	}
 
-	// When the most significant byte of the input bytes has the sign bit set, the result is
-	// negative.  So, remove the sign bit from the result and make it negative.
-	if b[len(b)-1]&0x80 != 0 {
-		// The maximum length of v has already been determined to be 4 above, so uint8 is enough to
-		// cover the max possible shift value of 24.
-		// result &= ^(int64(0x80) << uint8(8*(len(b)-1)))
-		// result = -result
-		v := big.NewInt(int64(0x80))
-		s := uint(8 * (len(b) - 1))
-		l := v.Lsh(v, s)
-		l.Not(l)
-		result.And(result, l)
+	var byt *big.Int
+	isNegative := b[l-1]&0x80 == 0x80
+	if isNegative {
+		byt = new(big.Int).SetBytes([]byte{b[l-1] & 0x7f})
+	} else {
+		byt = new(big.Int).SetBytes([]byte{b[l-1]})
+	}
+
+	byt.Lsh(byt, uint((l-1)*8))
+	result.Add(result, byt)
+	if isNegative {
 		result.Neg(result)
 	}
 
@@ -1623,4 +1620,47 @@ func isMinimalPush(opCode byte, b []byte) bool {
 	}
 
 	return true
+}
+
+func minimalEncode(b []byte) []byte {
+	l := len(b)
+	if l == 0 {
+		return b
+	}
+
+	// If the last byte is not 0x00 or 0x80, we are minimally encoded.
+	if b[l-1]&0x7f != 0 {
+		return b
+	}
+
+	// If the script is one byte long, then we have a zero, which encodes as an empty array.
+	if l == 1 {
+		return nil
+	}
+
+	// If the next byte has it sign bit set, then we are minimaly encoded.
+	if b[l-2]&0x80 != 0 {
+		return b
+	}
+
+	// We are not minimally encoded, we need to figure out how much to trim.
+	last := b[l-1]
+	for i := l - 1; i > 0; i-- {
+		// We found a non zero byte, time to encode.
+		if b[i-1] != 0 {
+			if b[i-1]&0x80 != 0 {
+				// We found a byte with it sign bit set so we need one more byte.
+				b[i] = last
+				i++
+			} else {
+				// the sign bit is clear, we can use it.
+				b[i-1] |= last
+			}
+
+			return b
+		}
+	}
+
+	// If we the whole thing is zeros, then we have a zero.
+	return nil
 }

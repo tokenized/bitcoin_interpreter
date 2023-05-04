@@ -6,3 +6,5 @@
 tmp*
 *.env
 *.out
+config/*
+!config/example.*
