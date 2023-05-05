@@ -23,6 +23,7 @@ func Test_CheckSignaturePreimageScript_Fixed(t *testing.T) {
 	lockingScript := CheckSignaturePreimageScript(sigHashType)
 
 	t.Logf("CheckSignaturePreimageScript (%d bytes) : %s", len(lockingScript), lockingScript)
+	t.Logf("CheckSignaturePreimageScript hex : %x", []byte(lockingScript))
 
 	value := uint64(1000)
 
@@ -80,6 +81,7 @@ func Test_CheckSignaturePreimageScript_Fixed(t *testing.T) {
 	}
 
 	t.Logf("Unlocking Script (%d bytes) : %s", len(unlockingScript), unlockingScript)
+	t.Logf("Unlocking Script hex : %x", []byte(unlockingScript))
 	t.Logf("Locking Script (%d bytes) : %s", len(lockingScript), lockingScript)
 
 	interpreter := bitcoin_interpreter.NewInterpreter()

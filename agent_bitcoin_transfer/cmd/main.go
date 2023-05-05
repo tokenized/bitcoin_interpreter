@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"strconv"
@@ -315,14 +316,23 @@ func ApproveAgentTransfer(ctx context.Context, config *Config, args []string) er
 	tx.TxIn[0].UnlockingScript = unlockingScript
 
 	// Sign funding inputs
-	hashCache = &bitcoin_interpreter.SigHashCache{}
-	for inputIndex, txin := range tx.TxIn[1:] {
+	for i, txin := range tx.TxIn[1:] {
+		inputIndex := i + 1
+		preimage, err := bitcoin_interpreter.SignaturePreimage(tx, inputIndex, lockingScript, -1,
+			inputValues[inputIndex], bitcoin_interpreter.SigHashForkID|bitcoin_interpreter.SigHashAll,
+			hashCache)
+		if err != nil {
+			return fmt.Errorf("Failed to create preimage : %s", err)
+		}
+		println("funding preimage", hex.EncodeToString(preimage))
+
 		sigHash, err := bitcoin_interpreter.SignatureHash(tx, inputIndex, lockingScript, -1,
 			inputValues[inputIndex], bitcoin_interpreter.SigHashForkID|bitcoin_interpreter.SigHashAll,
 			hashCache)
 		if err != nil {
 			return fmt.Errorf("Failed to create sig hash : %s", err)
 		}
+		println("funding sig hash", hex.EncodeToString(sigHash[:]))
 
 		signature, err := config.Key.Sign(*sigHash)
 		if err != nil {
