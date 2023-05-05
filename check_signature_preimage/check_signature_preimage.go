@@ -57,12 +57,12 @@ func UnlockSignaturePreimageScript(ctx context.Context, tx *wire.MsgTx, inputInd
 	interpreter := bitcoin_interpreter.NewInterpreter()
 	checkHashCache := &bitcoin_interpreter.SigHashCache{}
 
-	if err := interpreter.ExecuteVerbose(ctx, unlockingScript, tx, inputIndex, value,
+	if err := interpreter.Execute(ctx, unlockingScript, tx, inputIndex, value,
 		checkHashCache); err != nil {
 		return nil, errors.Wrap(err, "execute unlocking")
 	}
 
-	if err := interpreter.ExecuteVerbose(ctx, checkLockingScript, tx, inputIndex, value,
+	if err := interpreter.Execute(ctx, checkLockingScript, tx, inputIndex, value,
 		checkHashCache); err != nil {
 		if errors.Cause(err) == bitcoin_interpreter.ErrMalformedSignature {
 			// The signature generated in the script has leading zeros so it doesn't encode
@@ -78,4 +78,47 @@ func UnlockSignaturePreimageScript(ctx context.Context, tx *wire.MsgTx, inputInd
 	}
 
 	return unlockingScript, nil
+}
+
+// MatchSignaturePreimageScript checks if the beginning of items matches a
+// CheckSignaturePreimageScript then returns the remaining script items and the lock time.
+// If it doesn't match it returns ScriptNotMatching.
+func MatchSignaturePreimageScript(items bitcoin.ScriptItems) (bitcoin.ScriptItems, bitcoin_interpreter.SigHashType, error) {
+	// Script_CheckSignaturePreimage_Pre
+	var err error
+	items, err = bitcoin_interpreter.MatchScript(items, Script_CheckSignaturePreimage_Pre)
+	if err != nil {
+		return nil, 0, errors.Wrap(err, "get pre-script")
+	}
+
+	var sigHashTypeBytes []byte
+	items, sigHashTypeBytes, err = bitcoin_interpreter.MatchNextPushDataSize(items, 1)
+	if err != nil {
+		return nil, 0, errors.Wrap(err, "sig hash type")
+	}
+
+	sigHashType := bitcoin_interpreter.SigHashType(sigHashTypeBytes[0])
+
+	items, err = bitcoin_interpreter.MatchNextOpCode(items, bitcoin.OP_CAT)
+	if err != nil {
+		return nil, 0, errors.Wrap(err, "sig hash type")
+	}
+
+	items, _, err = bitcoin_interpreter.MatchNextPushDataSize(items,
+		bitcoin.PublicKeyCompressedLength)
+	if err != nil {
+		return nil, 0, errors.Wrap(err, "public key")
+	}
+
+	items, err = bitcoin_interpreter.MatchNextOpCode(items, bitcoin.OP_CODESEPARATOR)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	items, err = bitcoin_interpreter.MatchNextOpCode(items, bitcoin.OP_CHECKSIG)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return items, sigHashType, nil
 }

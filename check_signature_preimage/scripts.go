@@ -41,9 +41,9 @@ var (
 
 	Script_CheckSignaturePreimage_Pre bitcoin.Script
 
-	Script_Get_OutputsHash    bitcoin.Script
-	Script_Get_InputsSequence bitcoin.Script
-	Script_Get_LockTime       bitcoin.Script
+	Script_Get_OutputsHash   bitcoin.Script
+	Script_Get_InputSequence bitcoin.Script
+	Script_Get_LockTime      bitcoin.Script
 )
 
 func init() {
@@ -285,7 +285,7 @@ func init() {
 		bitcoin.OP_SPLIT, bitcoin.OP_SWAP, bitcoin.OP_DROP,
 	)
 
-	Script_Get_InputsSequence = bitcoin.ConcatScript(
+	Script_Get_InputSequence = bitcoin.ConcatScript(
 		bitcoin.OP_DUP, // Copy preimage
 
 		// Calculate offset 40 before the end.

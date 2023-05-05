@@ -281,7 +281,7 @@ func Test_Execute_Stack(t *testing.T) {
 
 			interpreter := NewInterpreter()
 
-			if err := interpreter.ExecuteVerbose(ctx, script, nil, 0, 0, nil); err != nil {
+			if err := interpreter.Execute(ctx, script, nil, 0, 0, nil); err != nil {
 				t.Errorf("Failed to execute script : %s", err)
 			}
 
