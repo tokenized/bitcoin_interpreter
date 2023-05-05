@@ -28,6 +28,12 @@ const (
 	sigHashTypeMask = 0x1f
 )
 
+var (
+	InvalidSingleSigHash = bitcoin.Hash32{0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
+)
+
 func (v SigHashType) HasForkID() bool {
 	return v&SigHashForkID == SigHashForkID
 }
@@ -194,6 +200,10 @@ func SignatureHash(tx *wire.MsgTx, index int, lockingScript bitcoin.Script,
 	opCodeSeparatorIndex int, value uint64, hashType SigHashType,
 	hashCache *SigHashCache) (*bitcoin.Hash32, error) {
 
+	if hashType.HasSingle() && index >= len(tx.TxOut) {
+		return &InvalidSingleSigHash, nil
+	}
+
 	codeScript, err := afterOpCodeSeparator(lockingScript, opCodeSeparatorIndex)
 	if err != nil {
 		return nil, errors.Wrap(err, "after code separator")
@@ -213,6 +223,10 @@ func SignatureHash(tx *wire.MsgTx, index int, lockingScript bitcoin.Script,
 func SignaturePreimage(tx *wire.MsgTx, index int, lockingScript bitcoin.Script,
 	opCodeSeparatorIndex int, value uint64, hashType SigHashType,
 	hashCache *SigHashCache) ([]byte, error) {
+
+	if hashType.HasSingle() && index >= len(tx.TxOut) {
+		return nil, errors.New("SigHashSingle: Missing output for input index")
+	}
 
 	codeScript, err := afterOpCodeSeparator(lockingScript, opCodeSeparatorIndex)
 	if err != nil {
