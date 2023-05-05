@@ -59,9 +59,9 @@ func main() {
 			logger.Fatal(ctx, "Failed to create agent output : %s", err)
 		}
 
-	case "approve_agent_transfer":
-		if err := ApproveAgentTransfer(ctx, cfg, os.Args[2:]); err != nil {
-			logger.Fatal(ctx, "Failed to approve agent transfer : %s", err)
+	case "complete_agent_transfer":
+		if err := CompleteAgentTransfer(ctx, cfg, os.Args[2:]); err != nil {
+			logger.Fatal(ctx, "Failed to complete agent transfer : %s", err)
 		}
 	}
 }
@@ -135,9 +135,11 @@ func CreateAgentOutput(ctx context.Context, config *Config, args []string) error
 		return errors.Wrap(err, "recover locking script")
 	}
 
+	timelock := uint32(time.Now().Unix()+3600)
+	fmt.Printf("Timelock : %d\n", timelock)
+
 	agentTransferLockingScript, err := agent_bitcoin_transfer.AgentBitcoinTransferScript(agentLockingScript,
-		approveLockingScript, refundLockingScript, value, recoverLockingScript,
-		uint32(time.Now().Unix()+3600))
+		approveLockingScript, refundLockingScript, value, recoverLockingScript, timelock)
 	outputValue := value
 
 	tx.AddTxOut(wire.NewTxOut(value, agentTransferLockingScript))
@@ -193,16 +195,21 @@ func CreateAgentOutput(ctx context.Context, config *Config, args []string) error
 	return nil
 }
 
-func ApproveAgentTransfer(ctx context.Context, config *Config, args []string) error {
-	if len(args) < 3 {
-		return errors.New("Wrong argument count: approve_agent_transfer [Agent Outpoint] [Value] [Outpoints]...")
+func CompleteAgentTransfer(ctx context.Context, config *Config, args []string) error {
+	if len(args) < 4 {
+		return errors.New("Wrong argument count: approve_agent_transfer [Option 0-2] [Agent Outpoint] [Value] [Outpoints]...")
 	}
 
 	woc := whatsonchain.NewService("", bitcoin.MainNet, time.Second*10, time.Second*30)
 
-	outpoint, err := wire.OutPointFromStr(args[0])
+	option, err := strconv.Atoi(args[0])
 	if err != nil {
-		return fmt.Errorf("Invalid outpoint : %s : %s", args[0], err)
+		return fmt.Errorf("Invalid option : %s : %s", args[0], err)
+	}
+
+	outpoint, err := wire.OutPointFromStr(args[1])
+	if err != nil {
+		return fmt.Errorf("Invalid outpoint : %s : %s", args[1], err)
 	}
 
 	outpointTx, err := woc.GetTx(ctx, outpoint.Hash)
@@ -228,9 +235,9 @@ func ApproveAgentTransfer(ctx context.Context, config *Config, args []string) er
 	inputValue := output.Value
 	inputValues := []uint64{output.Value}
 
-	v, err := strconv.Atoi(args[1])
+	v, err := strconv.Atoi(args[2])
 	if err != nil {
-		return fmt.Errorf("Invalid value : %s : %s", args[1], err)
+		return fmt.Errorf("Invalid value : %s : %s", args[2], err)
 	}
 	value := uint64(v)
 
@@ -239,10 +246,10 @@ func ApproveAgentTransfer(ctx context.Context, config *Config, args []string) er
 		return errors.Wrap(err, "locking script")
 	}
 
-	for i := 2; i < len(args); i++ {
-		outpoint, err := wire.OutPointFromStr(args[i])
+	for _, arg := range args[3:] {
+		outpoint, err := wire.OutPointFromStr(arg)
 		if err != nil {
-			return fmt.Errorf("Invalid outpoint : %s : %s", args[i], err)
+			return fmt.Errorf("Invalid outpoint : %s : %s", arg, err)
 		}
 
 		outpointTx, err := woc.GetTx(ctx, outpoint.Hash)
@@ -266,16 +273,53 @@ func ApproveAgentTransfer(ctx context.Context, config *Config, args []string) er
 		inputValues = append(inputValues, output.Value)
 	}
 
-	approveLockingScript, err := config.ApproveKey.LockingScript()
-	if err != nil {
-		return errors.Wrap(err, "approve locking script")
+	outputValue := uint64(0)
+
+	if option == 0 { // approve
+		// Verified payment to refund address fdac47bee81a92918467ee0193d850ddbf3452b7d1b39b280392a81775580844
+		approveLockingScript, err := config.ApproveKey.LockingScript()
+		if err != nil {
+			return errors.Wrap(err, "approve locking script")
+		}
+		tx.AddTxOut(wire.NewTxOut(value, approveLockingScript))
+		outputValue += value
+
+		// Attempt to pay wrong amount (Verified signature invalid) --ce
+		// tx.AddTxOut(wire.NewTxOut(value+1, approveLockingScript))
+		// outputValue += value+1
+
+		// Attempt to pay to the wrong script (Verified signature invalid) --ce
+		// tx.AddTxOut(wire.NewTxOut(value, lockingScript))
+		// outputValue += value
+	} else if option == 1 { // refund
+		// Verified payment to refund address 8ddc63d0a573ecec014e0f86ea1925f630357eda4ba8b553523bfe382e57bc3b
+		refundLockingScript, err := config.RefundKey.LockingScript()
+		if err != nil {
+			return errors.Wrap(err, "refund locking script")
+		}
+		tx.AddTxOut(wire.NewTxOut(value, refundLockingScript))
+		outputValue += value
+
+		// Attempt to pay wrong amount (Verified signature invalid) --ce
+		// tx.AddTxOut(wire.NewTxOut(value+1, refundLockingScript))
+		// outputValue += value+1
+
+		// Attempt to pay to the wrong script (Verified signature invalid) --ce
+		// tx.AddTxOut(wire.NewTxOut(value, lockingScript))
+		// outputValue += value
+	} else { // recover
+		// Verified payment to funding key
+		tx.AddTxOut(wire.NewTxOut(value, lockingScript))
+		outputValue += value+1 // Output script or value don't matter when signed by recovery key.
+
+		// Attempt to pay without timelock (Verified signature invalid) --ce
+		// Attempt to pay with timlock but max sequence (Verified signature invalid) --ce
+		tx.TxIn[0].Sequence = 1
+		tx.LockTime = 1683314836 // This has to be updated manually based on the creation of the output.
 	}
 
-	tx.AddTxOut(wire.NewTxOut(value, approveLockingScript))
-	outputValue := value
-
 	estimatedSize := unlockSize + tx.SerializeSize()
-	estimatedFee := uint64(config.FeeRate*float32(estimatedSize)) + 5
+	estimatedFee := uint64(config.FeeRate*float32(estimatedSize)) + 5 // plus 5 for rounding issues
 
 	if inputValue < estimatedFee+outputValue {
 		return fmt.Errorf("Insufficient value : outpoints %d, needed %d", inputValue, estimatedFee)
@@ -288,8 +332,9 @@ func ApproveAgentTransfer(ctx context.Context, config *Config, args []string) er
 
 	// tx.LockTime++
 
-	// Sign agent input
 	hashCache := &bitcoin_interpreter.SigHashCache{}
+
+	// Sign agent input
 	sigHash, err := bitcoin_interpreter.SignatureHash(tx, 0, agentTransferLockingScript, -1,
 		inputValues[0], bitcoin_interpreter.SigHashForkID|bitcoin_interpreter.SigHashAll,
 		hashCache)
@@ -308,12 +353,47 @@ func ApproveAgentTransfer(ctx context.Context, config *Config, args []string) er
 		bitcoin.PushData(config.AgentKey.PublicKey().Bytes()),
 	)
 
-	unlockingScript, err := agent_bitcoin_transfer.UnlockAgentBitcoinTransferApprove(ctx, tx,
-		0, inputValues[0], agentTransferLockingScript, agentUnlockingScript)
+	// Sign recover input
+	sigHash, err = bitcoin_interpreter.SignatureHash(tx, 0, agentTransferLockingScript, -1,
+		inputValues[0], bitcoin_interpreter.SigHashForkID|bitcoin_interpreter.SigHashAll,
+		hashCache)
 	if err != nil {
-		return fmt.Errorf("Failed to create agent transfer unlocking script : %s", err)
+		return fmt.Errorf("Failed to create sig hash : %s", err)
 	}
-	tx.TxIn[0].UnlockingScript = unlockingScript
+
+	signature, err = config.RecoverKey.Sign(*sigHash)
+	if err != nil {
+		return fmt.Errorf("Failed to create signature : %s", err)
+	}
+
+	recoverUnlockingScript := bitcoin.ConcatScript(
+		bitcoin.PushData(append(signature.Bytes(),
+			byte(bitcoin_interpreter.SigHashForkID|bitcoin_interpreter.SigHashAll))),
+		bitcoin.PushData(config.RecoverKey.PublicKey().Bytes()),
+	)
+
+	if option == 0 { // approve
+		unlockingScript, err := agent_bitcoin_transfer.UnlockAgentBitcoinTransferApprove(ctx, tx,
+			0, inputValues[0], agentTransferLockingScript, agentUnlockingScript)
+		if err != nil {
+			return fmt.Errorf("Failed to create agent transfer approve unlocking script : %s", err)
+		}
+		tx.TxIn[0].UnlockingScript = unlockingScript
+	} else if option == 1 { // refund
+		unlockingScript, err := agent_bitcoin_transfer.UnlockAgentBitcoinTransferRefund(ctx, tx,
+			0, inputValues[0], agentTransferLockingScript, agentUnlockingScript)
+		if err != nil {
+			return fmt.Errorf("Failed to create agent transfer refund unlocking script : %s", err)
+		}
+		tx.TxIn[0].UnlockingScript = unlockingScript
+	} else { // recover
+		unlockingScript, err := agent_bitcoin_transfer.UnlockAgentBitcoinTransferRecover(ctx, tx,
+			0, inputValues[0], agentTransferLockingScript, recoverUnlockingScript)
+		if err != nil {
+			return fmt.Errorf("Failed to create agent transfer recover unlocking script : %s", err)
+		}
+		tx.TxIn[0].UnlockingScript = unlockingScript
+	}
 
 	// Sign funding inputs
 	for i, txin := range tx.TxIn[1:] {
