@@ -8,15 +8,29 @@ import (
 	"io"
 	"strings"
 
-	"github.com/pkg/errors"
 	"github.com/tokenized/pkg/bitcoin"
 	"github.com/tokenized/pkg/wire"
+
+	"github.com/pkg/errors"
 )
 
 // SigHashType represents hash type bits at the end of a signature.
 type SigHashType uint32
 
 const (
+	// BasePreimageSize is the size of the preimage not including the code script since that is
+	// variable.
+	BasePreimageSize = 4 + // version
+		32 + // previous outputs hash
+		32 + // inputs sequence hash
+		32 + 4 + // previous outpoint
+		// variable length code script with varint size value
+		8 + // spent output value
+		4 + // spending input sequence
+		32 + // outputs hash
+		4 + // lock time
+		4 // sig hash type
+
 	SigHashAll          SigHashType = 0x01 // Sign all inputs, all outputs
 	SigHashNone         SigHashType = 0x02 // Sign all inputs, no outputs
 	SigHashSingle       SigHashType = 0x03 // Sign all inputs, only the output at same index as input

@@ -17,13 +17,13 @@ import (
 	"github.com/pkg/errors"
 )
 
-func Test_CheckSignaturePreimageScript_Fixed(t *testing.T) {
+func Test_CreateScript_Fixed(t *testing.T) {
 	ctx := logger.ContextWithLogger(context.Background(), true, false, "")
 	sigHashType := bitcoin_interpreter.SigHashForkID | bitcoin_interpreter.SigHashSingle
-	lockingScript := CheckSignaturePreimageScript(sigHashType)
+	lockingScript := CreateScript(sigHashType)
 
-	t.Logf("CheckSignaturePreimageScript (%d bytes) : %s", len(lockingScript), lockingScript)
-	t.Logf("CheckSignaturePreimageScript hex : %x", []byte(lockingScript))
+	t.Logf("CreateScript (%d bytes) : %s", len(lockingScript), lockingScript)
+	t.Logf("CreateScript hex : %x", []byte(lockingScript))
 
 	value := uint64(1000)
 
@@ -105,15 +105,15 @@ func Test_CheckSignaturePreimageScript_Fixed(t *testing.T) {
 	}
 }
 
-// Test_CheckSignaturePreimageScript tests specific preimages that have known to fail in the past.
-func Test_CheckSignaturePreimageScript_Specific(t *testing.T) {
+// Test_CreateScript tests specific preimages that have known to fail in the past.
+func Test_CreateScript_Specific(t *testing.T) {
 	t.Skip()
 
 	ctx := logger.ContextWithLogger(context.Background(), true, false, "")
 	sigHashType := bitcoin_interpreter.SigHashForkID | bitcoin_interpreter.SigHashSingle
-	lockingScript := CheckSignaturePreimageScript(sigHashType)
+	lockingScript := CreateScript(sigHashType)
 
-	t.Logf("CheckSignaturePreimageScript (%d bytes) : %s", len(lockingScript), lockingScript)
+	t.Logf("CreateScript (%d bytes) : %s", len(lockingScript), lockingScript)
 
 	tests := []struct {
 		name            string
@@ -239,7 +239,7 @@ func checkSignaturePreimageScript(ctx context.Context, t *testing.T, txHex strin
 
 	t.Logf("Correct Signature : %s", sig)
 
-	unlockingScript, err := UnlockSignaturePreimageScript(ctx, tx, inputIndex, lockingScript, 1,
+	unlockingScript, err := Unlock(ctx, tx, inputIndex, lockingScript, 1,
 		value, sigHashType, hashCache)
 	if needsMalleation {
 		if err == nil {
@@ -259,7 +259,7 @@ func checkSignaturePreimageScript(ctx context.Context, t *testing.T, txHex strin
 		for i := 0; i < 10; i++ {
 			tx.LockTime++
 			hashCache = &bitcoin_interpreter.SigHashCache{}
-			unlockingScript, err = UnlockSignaturePreimageScript(ctx, tx, inputIndex, lockingScript,
+			unlockingScript, err = Unlock(ctx, tx, inputIndex, lockingScript,
 				1, value, sigHashType, hashCache)
 			if err == nil {
 				break
@@ -290,12 +290,12 @@ func checkSignaturePreimageScript(ctx context.Context, t *testing.T, txHex strin
 	}
 }
 
-func Test_CheckSignaturePreimageScript_Random(t *testing.T) {
+func Test_CreateScript_Random(t *testing.T) {
 	ctx := logger.ContextWithLogger(context.Background(), true, false, "")
 	sigHashType := bitcoin_interpreter.SigHashForkID | bitcoin_interpreter.SigHashSingle
-	lockingScript := CheckSignaturePreimageScript(sigHashType)
+	lockingScript := CreateScript(sigHashType)
 
-	t.Logf("CheckSignaturePreimageScript (%d bytes) : %s", len(lockingScript), lockingScript)
+	t.Logf("CreateScript (%d bytes) : %s", len(lockingScript), lockingScript)
 
 	totalMalleations := 0
 	total := 1000
@@ -343,7 +343,7 @@ func checkSignaturePreimageScript_Random(ctx context.Context, t *testing.T,
 
 	for i := 0; i < 2; i++ {
 		hashCache := &bitcoin_interpreter.SigHashCache{}
-		unlockingScript, err := UnlockSignaturePreimageScript(ctx, tx, inputIndex, lockingScript, 1,
+		unlockingScript, err := Unlock(ctx, tx, inputIndex, lockingScript, 1,
 			value, sigHashType, hashCache)
 		if err != nil {
 			if errors.Cause(err) == TxNeedsMalleation {

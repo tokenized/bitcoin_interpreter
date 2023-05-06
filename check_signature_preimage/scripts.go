@@ -3,6 +3,7 @@ package check_signature_preimage
 import (
 	"encoding/hex"
 
+	"github.com/tokenized/bitcoin_interpreter"
 	"github.com/tokenized/pkg/bitcoin"
 )
 
@@ -44,6 +45,13 @@ var (
 	Script_Get_OutputsHash   bitcoin.Script
 	Script_Get_InputSequence bitcoin.Script
 	Script_Get_LockTime      bitcoin.Script
+
+	LockingSize   int
+	UnlockingSize int
+
+	PreimageSize int
+
+	CheckPreimageOutputsHashScript_Size int
 )
 
 func init() {
@@ -285,6 +293,10 @@ func init() {
 		bitcoin.OP_SPLIT, bitcoin.OP_SWAP, bitcoin.OP_DROP,
 	)
 
+	CheckPreimageOutputsHashScript_Size = len(Script_Get_OutputsHash) +
+		bitcoin.PushDataSize(32) + // outputs hash
+		1 // OP_EQUAL[VERIFY]
+
 	Script_Get_InputSequence = bitcoin.ConcatScript(
 		bitcoin.OP_DUP, // Copy preimage
 
@@ -316,4 +328,17 @@ func init() {
 		// Drop everything before the lock time.
 		bitcoin.OP_SPLIT, bitcoin.OP_SWAP, bitcoin.OP_DROP,
 	)
+
+	LockingSize = len(Script_CheckSignaturePreimage_Pre) +
+		bitcoin.PushDataSize(1) + // push sig hash type byte
+		1 + // bitcoin.OP_CAT,
+		bitcoin.PushDataSize(len(Value_PublicKey)) + // push public key
+		1 + // bitcoin.OP_CODESEPARATOR,
+		1 // bitcoin.OP_CHECKSIG,
+
+	// PreimageSize is constant because the second to last op code in the locking script is
+	// OP_CODESEPARATOR so the code script is always one byte plus the varint byte.
+	PreimageSize = bitcoin_interpreter.BasePreimageSize + 2 // code script with varint size
+
+	UnlockingSize = bitcoin.PushDataSize(PreimageSize)
 }

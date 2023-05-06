@@ -12,6 +12,27 @@ import (
 	"github.com/pkg/errors"
 )
 
+var (
+	// AgentLockingScriptOffset is the offset within the script where the agent locking script
+	// starts.
+	AgentLockingScriptOffset = 1 // OP_NOTIF
+
+	// RecoverLockingScriptOffset is the offset within the script, not counting the size of the
+	// agent locking script, where the recover locking script starts.
+	RecoverLockingScriptOffset int
+)
+
+func init() {
+	RecoverLockingScriptOffset = 1 + // OP_NOTIF
+		// Agent locking script
+		1 + // OP_NOTIF
+		check_signature_preimage.CheckPreimageOutputsHashScript_Size +
+		1 + // OP_ELSE
+		check_signature_preimage.CheckPreimageOutputsHashScript_Size +
+		1 + // OP_ENDIF
+		1 // OP_ELSE
+}
+
 type Info struct {
 	AgentLockingScript bitcoin.Script
 
@@ -80,7 +101,7 @@ func CreateScript(agentLockingScript, approveLockingScript, refundLockingScript 
 
 		bitcoin.OP_ENDIF,
 
-		check_signature_preimage.CheckSignaturePreimageScript(sigHashType),
+		check_signature_preimage.CreateScript(sigHashType),
 	), nil
 }
 
@@ -93,8 +114,8 @@ func UnlockApprove(ctx context.Context, tx *wire.MsgTx, inputIndex int, inputVal
 	sigHashType := bitcoin_interpreter.SigHashForkID | bitcoin_interpreter.SigHashSingle
 	hashCache := &bitcoin_interpreter.SigHashCache{}
 
-	preimageUnlockingScript, err := check_signature_preimage.UnlockSignaturePreimageScript(ctx, tx,
-		inputIndex, inputLockingScript, 1, inputValue, sigHashType, hashCache)
+	preimageUnlockingScript, err := check_signature_preimage.Unlock(ctx, tx, inputIndex,
+		inputLockingScript, 1, inputValue, sigHashType, hashCache)
 	if err != nil {
 		return nil, errors.Wrap(err, "preimage")
 	}
@@ -117,8 +138,8 @@ func UnlockRefund(ctx context.Context, tx *wire.MsgTx, inputIndex int, inputValu
 	sigHashType := bitcoin_interpreter.SigHashForkID | bitcoin_interpreter.SigHashSingle
 	hashCache := &bitcoin_interpreter.SigHashCache{}
 
-	preimageUnlockingScript, err := check_signature_preimage.UnlockSignaturePreimageScript(ctx, tx,
-		inputIndex, inputLockingScript, 1, inputValue, sigHashType, hashCache)
+	preimageUnlockingScript, err := check_signature_preimage.Unlock(ctx, tx, inputIndex,
+		inputLockingScript, 1, inputValue, sigHashType, hashCache)
 	if err != nil {
 		return nil, errors.Wrap(err, "preimage")
 	}
@@ -141,8 +162,8 @@ func UnlockRecover(ctx context.Context, tx *wire.MsgTx, inputIndex int, inputVal
 	sigHashType := bitcoin_interpreter.SigHashForkID | bitcoin_interpreter.SigHashSingle
 	hashCache := &bitcoin_interpreter.SigHashCache{}
 
-	preimageUnlockingScript, err := check_signature_preimage.UnlockSignaturePreimageScript(ctx, tx,
-		inputIndex, inputLockingScript, 1, inputValue, sigHashType, hashCache)
+	preimageUnlockingScript, err := check_signature_preimage.Unlock(ctx, tx, inputIndex,
+		inputLockingScript, 1, inputValue, sigHashType, hashCache)
 	if err != nil {
 		return nil, errors.Wrap(err, "preimage")
 	}
@@ -155,7 +176,7 @@ func UnlockRecover(ctx context.Context, tx *wire.MsgTx, inputIndex int, inputVal
 	), nil
 }
 
-// MatchSignaturePreimageScript parses the information from an agent bitcoin transfer locking script.
+// MatchScript parses the information from an agent bitcoin transfer locking script.
 // Right now this doesn't support when sub-scripts like agent or recover locking scripts contain
 // OP_NOTIF.
 func MatchScript(lockingScript bitcoin.Script) (*Info, error) {
@@ -283,7 +304,7 @@ func MatchScript(lockingScript bitcoin.Script) (*Info, error) {
 
 	// Parse check signature preimage script.
 	var sigHashType bitcoin_interpreter.SigHashType
-	items, sigHashType, err = check_signature_preimage.MatchSignaturePreimageScript(items)
+	items, sigHashType, err = check_signature_preimage.MatchScript(items)
 	if err != nil {
 		return nil, errors.Wrap(err, "signature preimage")
 	}

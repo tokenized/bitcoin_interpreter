@@ -8,9 +8,18 @@ import (
 	"github.com/pkg/errors"
 )
 
+const (
+	PublicKeySize             = 33
+	PublicKeyPushDataSize     = 1 + PublicKeySize    // 1 byte push op code + 33 byte public key
+	MaxSignatureSize          = 73                   // 72 byte sig + 1 byte sig hash type
+	MaxSignaturesPushDataSize = 1 + MaxSignatureSize // 1 byte push op code + 72 byte sig + 1 byte sig hash type
+)
+
 var (
 	// ScriptNotMatching means the script doesn't match what it was being parsed against.
 	ScriptNotMatching = errors.New("Script Not Matching")
+
+	RemainingScript = errors.New("Remaining Script")
 )
 
 // MatchScript parses the script items against the script. If the script doesn't completely match
@@ -24,7 +33,6 @@ func MatchScript(items bitcoin.ScriptItems, script bitcoin.Script) (bitcoin.Scri
 
 	for {
 		if len(matchItems) == 0 {
-			println("full match")
 			return items, nil // all match items matched
 		}
 		matchItem := matchItems[0]
@@ -35,8 +43,6 @@ func MatchScript(items bitcoin.ScriptItems, script bitcoin.Script) (bitcoin.Scri
 		}
 		item := items[0]
 		items = items[1:]
-
-		println("check match", matchItem.String(), item.String())
 
 		if !matchItem.Equal(*item) {
 			return nil, errors.Wrapf(ScriptNotMatching, "item %s should be %s", item, matchItem)
@@ -50,8 +56,6 @@ func MatchNextOpCode(items bitcoin.ScriptItems, opCode byte) (bitcoin.ScriptItem
 			bitcoin.OpCodeToString(opCode))
 	}
 	item := items[0]
-
-	println("check match", bitcoin.OpCodeToString(opCode), item.String())
 
 	if item.Type != bitcoin.ScriptItemTypeOpCode || item.OpCode != opCode {
 		return nil, errors.Wrapf(ScriptNotMatching, "should be %s: %s",
@@ -68,8 +72,6 @@ func MatchNextPushDataSize(items bitcoin.ScriptItems,
 		return nil, nil, errors.Wrapf(ScriptNotMatching, "missing push data size %d", size)
 	}
 	item := items[0]
-
-	println("check match", "push data size", size, item.String())
 
 	if item.Type != bitcoin.ScriptItemTypePushData || len(item.Data) != size {
 		return nil, nil, errors.Wrapf(ScriptNotMatching, "should be size %d: %s", size, item)

@@ -3,19 +3,24 @@ package agent_bitcoin_transfer
 import (
 	"bytes"
 	"context"
+	"fmt"
+	"math/rand"
 	"testing"
 	"time"
 
 	"github.com/tokenized/bitcoin_interpreter"
+	"github.com/tokenized/bitcoin_interpreter/check_signature_preimage"
+	"github.com/tokenized/bitcoin_interpreter/p2pkh"
 	"github.com/tokenized/logger"
 	"github.com/tokenized/pkg/bitcoin"
+	"github.com/tokenized/pkg/expanded_tx"
 	"github.com/tokenized/pkg/wire"
 
 	"github.com/pkg/errors"
 )
 
-// Test_Unlock tests unlocking a generated script with correct and incorrect values.
-func Test_Unlock(t *testing.T) {
+// Test_Unlock_Raw tests unlocking a generated script with correct and incorrect values.
+func Test_Unlock_Raw(t *testing.T) {
 	ctx := logger.ContextWithLogger(context.Background(), true, false, "")
 	sigHashType := bitcoin_interpreter.SigHashForkID | bitcoin_interpreter.SigHashSingle
 	value := uint64(1000)
@@ -322,32 +327,45 @@ func Test_Unlock(t *testing.T) {
 
 			t.Logf("Unlocking Script (%d bytes) : %s", len(unlockingScript), unlockingScript)
 
-			interpreter := bitcoin_interpreter.NewInterpreter()
+			success := false
+			for i := 0; i < 5; i++ {
+				interpreter := bitcoin_interpreter.NewInterpreter()
 
-			hashCache = &bitcoin_interpreter.SigHashCache{}
-			if err := interpreter.Execute(ctx, unlockingScript, tx, inputIndex, value,
-				hashCache); err != nil {
-				t.Fatalf("Failed to interpret unlocking script : %s", err)
-			}
-
-			t.Logf("Execute locking script")
-
-			if err := interpreter.Execute(ctx, lockingScript, tx, inputIndex, value,
-				hashCache); err != nil {
-				t.Fatalf("Failed to interpret locking script : %s", err)
-			}
-
-			stack := interpreter.StackItems()
-			t.Logf("Final Stack (%d items):\n%s", len(stack), interpreter.StackString())
-
-			if tt.shouldUnlock {
-				if !interpreter.IsUnlocked() {
-					t.Fatalf("Failed to unlock script : %s", interpreter.Error())
+				hashCache = &bitcoin_interpreter.SigHashCache{}
+				if err := interpreter.Execute(ctx, unlockingScript, tx, inputIndex, value,
+					hashCache); err != nil {
+					t.Fatalf("Failed to interpret unlocking script : %s", err)
 				}
-			} else if interpreter.IsUnlocked() {
-				t.Fatalf("Should not have unlocked script")
-			} else {
-				t.Logf("Correctly did not unlock script : %s", interpreter.Error())
+
+				t.Logf("Execute locking script")
+
+				if err := interpreter.Execute(ctx, lockingScript, tx, inputIndex, value,
+					hashCache); err != nil {
+					if errors.Cause(err) == check_signature_preimage.TxNeedsMalleation {
+						continue
+					}
+					t.Fatalf("Failed to interpret locking script : %s", err)
+				}
+				success = true
+
+				stack := interpreter.StackItems()
+				t.Logf("Final Stack (%d items):\n%s", len(stack), interpreter.StackString())
+
+				if tt.shouldUnlock {
+					if !interpreter.IsUnlocked() {
+						t.Fatalf("Failed to unlock script : %s", interpreter.Error())
+					}
+					success = true
+				} else if interpreter.IsUnlocked() {
+					t.Fatalf("Should not have unlocked script")
+				} else {
+					t.Logf("Correctly did not unlock script : %s", interpreter.Error())
+				}
+				break
+			}
+
+			if !success {
+				t.Fatalf("Failed to verify script in required number of malleations")
 			}
 		})
 	}
@@ -386,4 +404,221 @@ func Test_MatchScript_NotMatching(t *testing.T) {
 			}
 		})
 	}
+}
+
+func Test_Unlocker(t *testing.T) {
+	ctx := logger.ContextWithLogger(context.Background(), true, false, "")
+	sigHashType := bitcoin_interpreter.SigHashForkID | bitcoin_interpreter.SigHashSingle
+
+	for i := 0; i < 1; i++ {
+		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
+			test_Unlocker(t, ctx, sigHashType)
+		})
+	}
+}
+
+func test_Unlocker(t *testing.T, ctx context.Context, sigHashType bitcoin_interpreter.SigHashType) {
+	value := uint64(rand.Intn(1000) + 1)
+
+	agentKey, _ := bitcoin.GenerateKey(bitcoin.MainNet)
+	agentLockingScript := p2pkh.CreateScript(agentKey.PublicKey(), true)
+
+	recoverKey, _ := bitcoin.GenerateKey(bitcoin.MainNet)
+	recoverLockingScript := p2pkh.CreateScript(recoverKey.PublicKey(), true)
+
+	approveKey, _ := bitcoin.GenerateKey(bitcoin.MainNet)
+	approveLockingScript := p2pkh.CreateScript(approveKey.PublicKey(), false)
+
+	refundKey, _ := bitcoin.GenerateKey(bitcoin.MainNet)
+	refundLockingScript := p2pkh.CreateScript(refundKey.PublicKey(), false)
+
+	recoverLockTime := uint32(time.Now().Unix()) + 10000
+
+	lockingScript, err := CreateScript(agentLockingScript, approveLockingScript,
+		refundLockingScript, value, recoverLockingScript, recoverLockTime)
+	if err != nil {
+		t.Fatalf("Failed to create agent bitcoin transfer script : %s", err)
+	}
+	t.Logf("AgentBitcoinTransferScript (%d bytes) : %s", len(lockingScript), lockingScript)
+
+	agentUnlocker := p2pkh.NewUnlocker(agentKey, true,
+		bitcoin_interpreter.SigHashForkID|bitcoin_interpreter.SigHashAll, -1)
+
+	recoverUnlocker := p2pkh.NewUnlocker(recoverKey, true,
+		bitcoin_interpreter.SigHashForkID|bitcoin_interpreter.SigHashAll, -1)
+
+	// Create tx
+	inputTx := wire.NewMsgTx(1)
+	inputTx.AddTxOut(wire.NewTxOut(value, lockingScript))
+
+	tx := wire.NewMsgTx(1)
+	inputIndex := len(tx.TxIn)
+	tx.AddTxIn(wire.NewTxIn(wire.NewOutPoint(inputTx.TxHash(), 0), nil))
+
+	tx.AddTxOut(wire.NewTxOut(value, approveLockingScript))
+
+	etx := &expanded_tx.ExpandedTx{
+		Tx: tx,
+		Ancestors: expanded_tx.AncestorTxs{
+			{
+				Tx: inputTx,
+			},
+		},
+	}
+
+	// Test approve unlock #########################################################################
+	approveUnlocker := NewAgentApproveUnlocker(agentUnlocker)
+
+	// Unlock tx
+	if !approveUnlocker.CanUnlock(lockingScript) {
+		t.Fatalf("CanUnlock should return true")
+	}
+
+	unlockingScript, err := approveUnlocker.Unlock(ctx, etx, inputIndex, 0)
+	if err != nil {
+		t.Fatalf("Failed to unlock : %s", err)
+	}
+
+	unlockingSize, err := approveUnlocker.UnlockingSize(lockingScript)
+	if err != nil {
+		t.Fatalf("Failed to calculate unlocking size : %s", err)
+	}
+
+	if !within(unlockingSize, len(unlockingScript), 5) {
+		t.Fatalf("Wrong unlocking size : got %d, want %d", unlockingSize, len(unlockingScript))
+	}
+	t.Logf("Unlock size %d is within %d of estimated %d", len(unlockingScript), 5, unlockingSize)
+
+	tx.TxIn[inputIndex].UnlockingScript = unlockingScript
+
+	// Verify unlocking script actually unlocks in the interpreter.
+	interpreter := bitcoin_interpreter.NewInterpreter()
+
+	hashCache := &bitcoin_interpreter.SigHashCache{}
+	if err := interpreter.Execute(ctx, unlockingScript, tx, inputIndex, value,
+		hashCache); err != nil {
+		t.Fatalf("Failed to interpret unlocking script : %s", err)
+	}
+
+	if err := interpreter.Execute(ctx, lockingScript, tx, inputIndex, value,
+		hashCache); err != nil {
+		t.Fatalf("Failed to interpret locking script : %s", err)
+	}
+
+	stack := interpreter.StackItems()
+	t.Logf("Final Stack (%d items):\n%s", len(stack), interpreter.StackString())
+
+	if !interpreter.IsUnlocked() {
+		t.Fatalf("Failed to unlock script : %s", interpreter.Error())
+	}
+
+	// Test refund unlock ##########################################################################
+	refundUnlocker := NewAgentRefundUnlocker(agentUnlocker)
+
+	tx.TxOut[0] = wire.NewTxOut(value, refundLockingScript)
+
+	// Unlock tx
+	if !refundUnlocker.CanUnlock(lockingScript) {
+		t.Fatalf("CanUnlock should return true")
+	}
+
+	unlockingScript, err = refundUnlocker.Unlock(ctx, etx, inputIndex, 0)
+	if err != nil {
+		t.Fatalf("Failed to unlock : %s", err)
+	}
+
+	unlockingSize, err = refundUnlocker.UnlockingSize(lockingScript)
+	if err != nil {
+		t.Fatalf("Failed to calculate unlocking size : %s", err)
+	}
+
+	if !within(unlockingSize, len(unlockingScript), 5) {
+		t.Fatalf("Wrong unlocking size : got %d, want %d", unlockingSize, len(unlockingScript))
+	}
+	t.Logf("Unlock size %d is within %d of estimated %d", len(unlockingScript), 5, unlockingSize)
+
+	tx.TxIn[inputIndex].UnlockingScript = unlockingScript
+
+	// Verify unlocking script actually unlocks in the interpreter.
+	interpreter = bitcoin_interpreter.NewInterpreter()
+
+	hashCache = &bitcoin_interpreter.SigHashCache{}
+	if err := interpreter.Execute(ctx, unlockingScript, tx, inputIndex, value,
+		hashCache); err != nil {
+		t.Fatalf("Failed to interpret unlocking script : %s", err)
+	}
+
+	if err := interpreter.Execute(ctx, lockingScript, tx, inputIndex, value,
+		hashCache); err != nil {
+		t.Fatalf("Failed to interpret locking script : %s", err)
+	}
+
+	stack = interpreter.StackItems()
+	t.Logf("Final Stack (%d items):\n%s", len(stack), interpreter.StackString())
+
+	if !interpreter.IsUnlocked() {
+		t.Fatalf("Failed to unlock script : %s", interpreter.Error())
+	}
+
+	// Test recover unlock #########################################################################
+	transferRecoverUnlocker := NewRecoverUnlocker(recoverUnlocker)
+
+	tx.TxOut[0] = wire.NewTxOut(value, refundLockingScript)
+	tx.TxIn[inputIndex].Sequence = 1
+	tx.LockTime = recoverLockTime
+
+	// Unlock tx
+	if !transferRecoverUnlocker.CanUnlock(lockingScript) {
+		t.Fatalf("CanUnlock should return true")
+	}
+
+	unlockingScript, err = transferRecoverUnlocker.Unlock(ctx, etx, inputIndex, 0)
+	if err != nil {
+		t.Fatalf("Failed to unlock : %s", err)
+	}
+
+	unlockingSize, err = transferRecoverUnlocker.UnlockingSize(lockingScript)
+	if err != nil {
+		t.Fatalf("Failed to calculate unlocking size : %s", err)
+	}
+
+	if !within(unlockingSize, len(unlockingScript), 5) {
+		t.Fatalf("Wrong unlocking size : got %d, want %d", unlockingSize, len(unlockingScript))
+	}
+	t.Logf("Unlock size %d is within %d of estimated %d", len(unlockingScript), 5, unlockingSize)
+
+	tx.TxIn[inputIndex].UnlockingScript = unlockingScript
+
+	// Verify unlocking script actually unlocks in the interpreter.
+	interpreter = bitcoin_interpreter.NewInterpreter()
+
+	hashCache = &bitcoin_interpreter.SigHashCache{}
+	if err := interpreter.Execute(ctx, unlockingScript, tx, inputIndex, value,
+		hashCache); err != nil {
+		t.Fatalf("Failed to interpret unlocking script : %s", err)
+	}
+
+	if err := interpreter.Execute(ctx, lockingScript, tx, inputIndex, value,
+		hashCache); err != nil {
+		t.Fatalf("Failed to interpret locking script : %s", err)
+	}
+
+	stack = interpreter.StackItems()
+	t.Logf("Final Stack (%d items):\n%s", len(stack), interpreter.StackString())
+
+	if !interpreter.IsUnlocked() {
+		t.Fatalf("Failed to unlock script : %s", interpreter.Error())
+	}
+}
+
+func within(x, target, within int) bool {
+	if x > target+within {
+		return false
+	}
+
+	if x < target-within {
+		return false
+	}
+
+	return true
 }

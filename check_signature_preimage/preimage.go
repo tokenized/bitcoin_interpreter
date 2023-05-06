@@ -37,38 +37,26 @@ func MatchPreimageOutputsHashScript(items bitcoin.ScriptItems,
 		return nil, nil, errors.Wrap(err, "get outputs hash")
 	}
 
-	if len(items) == 0 {
-		return nil, nil, errors.Wrap(bitcoin_interpreter.ScriptNotMatching, "missing outputs hash")
-	}
-	item := items[0]
-	items = items[1:]
-
-	if item.Type != bitcoin.ScriptItemTypePushData || len(item.Data) != bitcoin.Hash32Size {
-		return nil, nil, errors.Wrapf(bitcoin_interpreter.ScriptNotMatching,
-			"wrong size push data for hash 32: %d", len(item.Data))
-	}
-
-	hash, err := bitcoin.NewHash32(item.Data)
+	var hash32Bytes []byte
+	items, hash32Bytes, err = bitcoin_interpreter.MatchNextPushDataSize(items, bitcoin.Hash32Size)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "hash32")
 	}
 
-	if len(items) == 0 {
-		return nil, nil, errors.Wrap(bitcoin_interpreter.ScriptNotMatching,
-			"missing OP_EQUAL[VERIFY]")
+	hash, err := bitcoin.NewHash32(hash32Bytes)
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "hash32")
 	}
-	item = items[0]
-	items = items[1:]
 
 	if verify {
-		if item.Type != bitcoin.ScriptItemTypeOpCode || item.OpCode != bitcoin.OP_EQUALVERIFY {
-			return nil, nil, errors.Wrapf(bitcoin_interpreter.ScriptNotMatching,
-				"not OP_EQUALVERIFY: %s", item)
+		items, err = bitcoin_interpreter.MatchNextOpCode(items, bitcoin.OP_EQUALVERIFY)
+		if err != nil {
+			return nil, nil, err
 		}
 	} else {
-		if item.Type != bitcoin.ScriptItemTypeOpCode || item.OpCode != bitcoin.OP_EQUAL {
-			return nil, nil, errors.Wrapf(bitcoin_interpreter.ScriptNotMatching, "not OP_EQUAL: %s",
-				item)
+		items, err = bitcoin_interpreter.MatchNextOpCode(items, bitcoin.OP_EQUAL)
+		if err != nil {
+			return nil, nil, err
 		}
 	}
 
@@ -106,36 +94,23 @@ func MatchPreimageInputSequenceScript(items bitcoin.ScriptItems,
 		return nil, 0, errors.Wrap(err, "get input sequence")
 	}
 
-	if len(items) == 0 {
-		return nil, 0, errors.Wrap(bitcoin_interpreter.ScriptNotMatching,
-			"missing input sequence bytes")
-	}
-	item := items[0]
-	items = items[1:]
-
-	if item.Type != bitcoin.ScriptItemTypePushData || len(item.Data) != 4 {
-		return nil, 0, errors.Wrapf(bitcoin_interpreter.ScriptNotMatching,
-			"wrong size push data for input sequence (uint32): %d", len(item.Data))
+	var inputSequenceBytes []byte
+	items, inputSequenceBytes, err = bitcoin_interpreter.MatchNextPushDataSize(items, 4)
+	if err != nil {
+		return nil, 0, errors.Wrap(err, "hash32")
 	}
 
-	inputSequence := binary.LittleEndian.Uint32(item.Data)
-
-	if len(items) == 0 {
-		return nil, 0, errors.Wrap(bitcoin_interpreter.ScriptNotMatching,
-			"missing OP_EQUAL[VERIFY]")
-	}
-	item = items[0]
-	items = items[1:]
+	inputSequence := binary.LittleEndian.Uint32(inputSequenceBytes)
 
 	if verify {
-		if item.Type != bitcoin.ScriptItemTypeOpCode || item.OpCode != bitcoin.OP_EQUALVERIFY {
-			return nil, 0, errors.Wrapf(bitcoin_interpreter.ScriptNotMatching,
-				"not OP_EQUALVERIFY: %s", item)
+		items, err = bitcoin_interpreter.MatchNextOpCode(items, bitcoin.OP_EQUALVERIFY)
+		if err != nil {
+			return nil, 0, err
 		}
 	} else {
-		if item.Type != bitcoin.ScriptItemTypeOpCode || item.OpCode != bitcoin.OP_EQUAL {
-			return nil, 0, errors.Wrapf(bitcoin_interpreter.ScriptNotMatching, "not OP_EQUAL: %s",
-				item)
+		items, err = bitcoin_interpreter.MatchNextOpCode(items, bitcoin.OP_EQUAL)
+		if err != nil {
+			return nil, 0, err
 		}
 	}
 
@@ -215,7 +190,7 @@ func MatchPreimageLockTimeScript(items bitcoin.ScriptItems,
 	var inputSequenceBytes []byte
 	items, inputSequenceBytes, err = bitcoin_interpreter.MatchNextPushDataSize(items, 4)
 	if err != nil {
-		return nil, 0, errors.Wrap(err, "input sequence")
+		return nil, 0, errors.Wrap(err, "hash32")
 	}
 
 	inputSequence := binary.LittleEndian.Uint32(inputSequenceBytes)

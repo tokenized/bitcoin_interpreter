@@ -334,7 +334,7 @@ func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.Scrip
 					logger.Int("item_index", itemIndex),
 				}, "Verify failed")
 			}
-			i.err = errors.Wrapf(ErrVerifyFailed, "op code: %s", item)
+			i.err = errors.Wrapf(ErrVerifyFailed, "op code (%d): %s", itemIndex, item)
 			i.scriptVerifyFailed = true
 			return nil
 		}
@@ -759,7 +759,7 @@ func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.Scrip
 				}, "Verify equal failed")
 			}
 
-			i.err = errors.Wrapf(ErrVerifyFailed, "op code: %s", item)
+			i.err = errors.Wrapf(ErrVerifyFailed, "op code (%d): %s", itemIndex, item)
 			i.scriptVerifyFailed = true
 			return nil
 		}
@@ -1028,7 +1028,7 @@ func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.Scrip
 		n2 := decodeInteger(b2)
 
 		if n1.Cmp(n2) != 0 {
-			i.err = errors.Wrapf(ErrVerifyFailed, "op code: %s", item)
+			i.err = errors.Wrapf(ErrVerifyFailed, "op code (%d): %s", itemIndex, item)
 			i.scriptVerifyFailed = true
 			return nil
 		}
@@ -1253,7 +1253,7 @@ func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.Scrip
 
 		case bitcoin.OP_CHECKSIGVERIFY:
 			if !verified {
-				i.err = errors.Wrapf(ErrVerifyFailed, "op code: %s", item)
+				i.err = errors.Wrapf(ErrVerifyFailed, "op code (%d): %s", itemIndex, item)
 				i.scriptVerifyFailed = true
 				return nil
 			}

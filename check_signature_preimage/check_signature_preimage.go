@@ -17,9 +17,9 @@ var (
 	TxNeedsMalleation = errors.New("Tx Needs Malleation")
 )
 
-// CheckSignaturePreimageScript returns a section of bitcoin script that verifies that the top item
-// on the stack is the signature preimage of the spending transaction.
-func CheckSignaturePreimageScript(sigHashType bitcoin_interpreter.SigHashType) bitcoin.Script {
+// CreateScript returns a section of bitcoin script that verifies that the top item on the stack is
+// the signature preimage of the spending transaction.
+func CreateScript(sigHashType bitcoin_interpreter.SigHashType) bitcoin.Script {
 	return bitcoin.ConcatScript(
 		Script_CheckSignaturePreimage_Pre,
 		bitcoin.BytePushData(byte(sigHashType)),
@@ -30,9 +30,8 @@ func CheckSignaturePreimageScript(sigHashType bitcoin_interpreter.SigHashType) b
 	)
 }
 
-func UnlockSignaturePreimageScript(ctx context.Context, tx *wire.MsgTx, inputIndex int,
-	lockingScript bitcoin.Script, opCodeSeparatorIndex int, value uint64,
-	sigHashType bitcoin_interpreter.SigHashType,
+func Unlock(ctx context.Context, tx *wire.MsgTx, inputIndex int, lockingScript bitcoin.Script,
+	opCodeSeparatorIndex int, value uint64, sigHashType bitcoin_interpreter.SigHashType,
 	hashCache *bitcoin_interpreter.SigHashCache) (bitcoin.Script, error) {
 
 	preimage, err := bitcoin_interpreter.SignaturePreimage(tx, inputIndex, lockingScript,
@@ -52,7 +51,7 @@ func UnlockSignaturePreimageScript(ctx context.Context, tx *wire.MsgTx, inputInd
 	// the fact that all variable parts of the locking script are before the OP_CODE_SEPARATOR so
 	// this preimage will be the same. If not then this will not unlock the script and return an
 	// error.
-	checkLockingScript := CheckSignaturePreimageScript(sigHashType)
+	checkLockingScript := CreateScript(sigHashType)
 
 	interpreter := bitcoin_interpreter.NewInterpreter()
 	checkHashCache := &bitcoin_interpreter.SigHashCache{}
@@ -80,10 +79,10 @@ func UnlockSignaturePreimageScript(ctx context.Context, tx *wire.MsgTx, inputInd
 	return unlockingScript, nil
 }
 
-// MatchSignaturePreimageScript checks if the beginning of items matches a
-// CheckSignaturePreimageScript then returns the remaining script items and the lock time.
+// MatchScript checks if the beginning of items matches a check preimage script then returns the
+// remaining script items and the lock time.
 // If it doesn't match it returns ScriptNotMatching.
-func MatchSignaturePreimageScript(items bitcoin.ScriptItems) (bitcoin.ScriptItems, bitcoin_interpreter.SigHashType, error) {
+func MatchScript(items bitcoin.ScriptItems) (bitcoin.ScriptItems, bitcoin_interpreter.SigHashType, error) {
 	// Script_CheckSignaturePreimage_Pre
 	var err error
 	items, err = bitcoin_interpreter.MatchScript(items, Script_CheckSignaturePreimage_Pre)
