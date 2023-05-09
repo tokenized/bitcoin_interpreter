@@ -40,6 +40,36 @@ type ifStackItem struct {
 	elseFound bool
 }
 
+func VerifyTx(ctx context.Context, tx TransactionWithOutputs) error {
+	hashCache := &SigHashCache{}
+	msgTx := tx.GetMsgTx()
+
+	for inputIndex, txin := range msgTx.TxIn {
+		inputOutput, err := tx.InputOutput(inputIndex)
+		if err != nil {
+			return errors.Wrapf(err, "input %d output", inputIndex)
+		}
+
+		interpreter := NewInterpreter()
+
+		if err := interpreter.Execute(ctx, txin.UnlockingScript, msgTx, inputIndex,
+			inputOutput.Value, hashCache); err != nil {
+			return errors.Wrapf(err, "input %d unlocking script", inputIndex)
+		}
+
+		if err := interpreter.Execute(ctx, inputOutput.LockingScript, msgTx, inputIndex,
+			inputOutput.Value, hashCache); err != nil {
+			return errors.Wrapf(err, "input %d locking script", inputIndex)
+		}
+
+		if !interpreter.IsUnlocked() {
+			return errors.Wrapf(interpreter.Error(), "input %d", inputIndex)
+		}
+	}
+
+	return nil
+}
+
 func NewInterpreter() *Interpreter {
 	return &Interpreter{}
 }

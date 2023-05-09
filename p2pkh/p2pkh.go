@@ -48,7 +48,7 @@ func Unlock(tx bitcoin_interpreter.TransactionWithOutputs, inputIndex int, locki
 
 	scriptHash, err := MatchScript(txout.LockingScript[lockingScriptOffset:], verify)
 	if err != nil && errors.Cause(err) != bitcoin_interpreter.RemainingScript {
-		return nil, errors.Wrap(bitcoin_interpreter.CantUnlock, err.Error())
+		return nil, err
 	}
 
 	publicKeyBytes := key.PublicKey().Bytes()

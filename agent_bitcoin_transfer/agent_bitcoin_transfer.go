@@ -45,6 +45,26 @@ type Info struct {
 	RecoverLockTime      uint32
 }
 
+// ApproveMatches returns true if the ApproveOutputHash matches the locking script and value.
+func (i Info) ApproveMatches(lockingScript bitcoin.Script, value uint64) bool {
+	output := wire.NewTxOut(value, lockingScript)
+	var outputBuf bytes.Buffer
+	output.Serialize(&outputBuf, 0, 0)
+	outputHash, _ := bitcoin.NewHash32(bitcoin.DoubleSha256(outputBuf.Bytes()))
+
+	return outputHash.Equal(&i.ApproveOutputHash)
+}
+
+// RefundMatches returns true if the RefundOutputHash matches the locking script and value.
+func (i Info) RefundMatches(lockingScript bitcoin.Script, value uint64) bool {
+	output := wire.NewTxOut(value, lockingScript)
+	var outputBuf bytes.Buffer
+	output.Serialize(&outputBuf, 0, 0)
+	outputHash, _ := bitcoin.NewHash32(bitcoin.DoubleSha256(outputBuf.Bytes()))
+
+	return outputHash.Equal(&i.RefundOutputHash)
+}
+
 // CreateScript creates a locking script that can be unlocked 3 ways.
 // 1. Authorized by the agent and spending to approve output.
 // 2. Authorized by the agent and spending to refund output.
@@ -53,6 +73,7 @@ func CreateScript(agentLockingScript, approveLockingScript, refundLockingScript 
 	value uint64, recoverLockingScript bitcoin.Script,
 	recoverLockTime uint32) (bitcoin.Script, error) {
 
+	agentLockingScript = agentLockingScript.Copy()
 	if err := agentLockingScript.AddHardVerify(); err != nil {
 		return nil, errors.Wrap(err, "recover add verify")
 	}
@@ -77,6 +98,7 @@ func CreateScript(agentLockingScript, approveLockingScript, refundLockingScript 
 		bitcoin.OP_ENDIF,
 	)
 
+	recoverLockingScript = recoverLockingScript.Copy()
 	if err := recoverLockingScript.AddHardVerify(); err != nil {
 		return nil, errors.Wrap(err, "recover add verify")
 	}
@@ -320,4 +342,19 @@ func MatchScript(lockingScript bitcoin.Script) (*Info, error) {
 	}
 
 	return result, nil
+}
+
+func ApproveUnlockingSize(agentUnlockingSize int) int {
+	// +2 for the two branch selection bytes for agent unlocks
+	return check_signature_preimage.UnlockingSize + agentUnlockingSize + 2
+}
+
+func RefundUnlockingSize(agentUnlockingSize int) int {
+	// +2 for the two branch selection bytes for agent unlocks
+	return check_signature_preimage.UnlockingSize + agentUnlockingSize + 2
+}
+
+func RecoverUnlockingSize(recoverUnlockingSize int) int {
+	// +1 for the recover branch selection byte for recover unlock
+	return check_signature_preimage.UnlockingSize + recoverUnlockingSize + 1
 }

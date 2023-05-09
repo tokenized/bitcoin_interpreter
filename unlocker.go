@@ -13,14 +13,22 @@ var (
 	// CantUnlock is returned when the unlocker can't unlock the locking script.
 	CantUnlock = errors.New("Can't Unlock")
 
+	// CantSign is returned when the unlocker can't sign the locking script. This is for unlockers
+	// that are only used for fee estimation but don't actually have the private keys.
+	CantSign = errors.New("Can't Sign")
+
 	// NotFullyUnlocked will be returned from the unlock function when the unlocker provided partial
 	// unlocking but it is not complete.
 	NotFullyUnlocked = errors.New("Not Fully Unlocked")
 )
 
 type Unlocker interface {
-	// Unlock populates the correct unlocking script for the input specified.
-	Unlock(ctx context.Context, tx TransactionWithOutputs, inputIndex int,
+	// Unlock returns the correct unlocking script for the input specified.
+	Unlock(ctx context.Context, tx TransactionWithOutputs, inputIndex int) (bitcoin.Script, error)
+
+	// SubUnlock returns the correct unlocking script for the input specified. It supports
+	// sub-script where the script is embedded in another script.
+	SubUnlock(ctx context.Context, tx TransactionWithOutputs, inputIndex int,
 		lockingScriptOffset int) (bitcoin.Script, error)
 
 	// UnlockingSize estimates the size of the unlocking script for the locking script.
@@ -49,11 +57,25 @@ type TransactionWithOutputs interface {
 
 type MultiUnlocker []Unlocker
 
-func (u MultiUnlocker) Unlock(ctx context.Context, tx TransactionWithOutputs, inputIndex int,
+func (u MultiUnlocker) Unlock(ctx context.Context, tx TransactionWithOutputs,
+	inputIndex int) (bitcoin.Script, error) {
+
+	for _, unlocker := range u {
+		if unlockingScript, err := unlocker.Unlock(ctx, tx, inputIndex); err == nil {
+			return unlockingScript, nil
+		} else if errors.Cause(err) != CantUnlock && errors.Cause(err) != ScriptNotMatching {
+			return nil, err
+		}
+	}
+
+	return nil, CantUnlock
+}
+
+func (u MultiUnlocker) SubUnlock(ctx context.Context, tx TransactionWithOutputs, inputIndex int,
 	lockingScriptOffset int) (bitcoin.Script, error) {
 
 	for _, unlocker := range u {
-		if unlockingScript, err := unlocker.Unlock(ctx, tx, inputIndex,
+		if unlockingScript, err := unlocker.SubUnlock(ctx, tx, inputIndex,
 			lockingScriptOffset); err == nil {
 			return unlockingScript, nil
 		} else if errors.Cause(err) != CantUnlock {
@@ -65,18 +87,18 @@ func (u MultiUnlocker) Unlock(ctx context.Context, tx TransactionWithOutputs, in
 }
 
 func (u MultiUnlocker) UnlockingSize(lockingScript bitcoin.Script) (int, error) {
-	cantUnlock := CantUnlock
+	notMatching := ScriptNotMatching
 	for _, unlocker := range u {
 		if unlockingSize, err := unlocker.UnlockingSize(lockingScript); err == nil {
 			return unlockingSize, nil
-		} else if errors.Cause(err) != CantUnlock {
+		} else if errors.Cause(err) != ScriptNotMatching {
 			return 0, err
 		} else {
-			cantUnlock = err
+			notMatching = err
 		}
 	}
 
-	return 0, cantUnlock
+	return 0, notMatching
 }
 
 func (u MultiUnlocker) CanUnlock(lockingScript bitcoin.Script) bool {

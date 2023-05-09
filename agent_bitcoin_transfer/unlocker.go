@@ -21,6 +21,12 @@ func NewAgentApproveUnlocker(agentUnlocker bitcoin_interpreter.Unlocker) *AgentA
 }
 
 func (u *AgentApproveUnlocker) Unlock(ctx context.Context,
+	tx bitcoin_interpreter.TransactionWithOutputs, inputIndex int) (bitcoin.Script, error) {
+
+	return u.SubUnlock(ctx, tx, inputIndex, 0)
+}
+
+func (u *AgentApproveUnlocker) SubUnlock(ctx context.Context,
 	tx bitcoin_interpreter.TransactionWithOutputs, inputIndex int,
 	lockingScriptOffset int) (bitcoin.Script, error) {
 
@@ -30,7 +36,8 @@ func (u *AgentApproveUnlocker) Unlock(ctx context.Context,
 		return nil, errors.Wrap(err, "input output")
 	}
 
-	agentUnlockingScript, err := u.AgentUnlocker.Unlock(ctx, tx, inputIndex, lockingScriptOffset+1)
+	agentUnlockingScript, err := u.AgentUnlocker.SubUnlock(ctx, tx, inputIndex,
+		lockingScriptOffset+1)
 	if err != nil {
 		return nil, errors.Wrap(err, "agent")
 	}
@@ -91,6 +98,12 @@ func NewAgentRefundUnlocker(agentUnlocker bitcoin_interpreter.Unlocker) *AgentRe
 }
 
 func (u *AgentRefundUnlocker) Unlock(ctx context.Context,
+	tx bitcoin_interpreter.TransactionWithOutputs, inputIndex int) (bitcoin.Script, error) {
+
+	return u.SubUnlock(ctx, tx, inputIndex, 0)
+}
+
+func (u *AgentRefundUnlocker) SubUnlock(ctx context.Context,
 	tx bitcoin_interpreter.TransactionWithOutputs, inputIndex int,
 	lockingScriptOffset int) (bitcoin.Script, error) {
 
@@ -100,7 +113,8 @@ func (u *AgentRefundUnlocker) Unlock(ctx context.Context,
 		return nil, errors.Wrap(err, "input output")
 	}
 
-	agentUnlockingScript, err := u.AgentUnlocker.Unlock(ctx, tx, inputIndex, lockingScriptOffset+1)
+	agentUnlockingScript, err := u.AgentUnlocker.SubUnlock(ctx, tx, inputIndex,
+		lockingScriptOffset+1)
 	if err != nil {
 		return nil, errors.Wrap(err, "agent")
 	}
@@ -161,6 +175,12 @@ func NewRecoverUnlocker(subUnlocker bitcoin_interpreter.Unlocker) *RecoverUnlock
 }
 
 func (u *RecoverUnlocker) Unlock(ctx context.Context,
+	tx bitcoin_interpreter.TransactionWithOutputs, inputIndex int) (bitcoin.Script, error) {
+
+	return u.SubUnlock(ctx, tx, inputIndex, 0)
+}
+
+func (u *RecoverUnlocker) SubUnlock(ctx context.Context,
 	tx bitcoin_interpreter.TransactionWithOutputs, inputIndex int,
 	lockingScriptOffset int) (bitcoin.Script, error) {
 
@@ -175,7 +195,7 @@ func (u *RecoverUnlocker) Unlock(ctx context.Context,
 		return nil, errors.Wrap(err, "match")
 	}
 
-	subUnlockingScript, err := u.SubUnlocker.Unlock(ctx, tx, inputIndex, lockingScriptOffset+
+	subUnlockingScript, err := u.SubUnlocker.SubUnlock(ctx, tx, inputIndex, lockingScriptOffset+
 		len(info.AgentLockingScript)+RecoverLockingScriptOffset)
 	if err != nil {
 		return nil, errors.Wrap(err, "sub")
@@ -196,17 +216,17 @@ func (u *RecoverUnlocker) UnlockingSize(lockingScript bitcoin.Script) (int, erro
 		return 0, errors.Wrap(err, "match")
 	}
 
-	agentUnlockingSize, err := u.SubUnlocker.UnlockingSize(info.RecoverLockingScript)
+	recoverUnlockingSize, err := u.SubUnlocker.UnlockingSize(info.RecoverLockingScript)
 	if err != nil {
-		return 0, errors.Wrap(err, "agent")
+		return 0, errors.Wrap(err, "recover")
 	}
 
 	// +1 for the branch selection byte for recover unlock
-	return check_signature_preimage.UnlockingSize + agentUnlockingSize + 1, nil
+	return check_signature_preimage.UnlockingSize + recoverUnlockingSize + 1, nil
 }
 
-// CanUnlock returns true if the locking script matches the agent. It does not check if the output
-// is correct for the recover.
+// CanUnlock returns true if the locking script matches the recover. It does not check if the
+// input sequence and lock time are valid for the unlock.
 func (u *RecoverUnlocker) CanUnlock(lockingScript bitcoin.Script) bool {
 	info, err := MatchScript(lockingScript)
 	if err != nil {

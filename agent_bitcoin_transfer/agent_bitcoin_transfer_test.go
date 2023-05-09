@@ -61,9 +61,11 @@ func Test_Unlock_Raw(t *testing.T) {
 		t.Fatalf("MatchScript failed : %s", err)
 	}
 
-	if !info.AgentLockingScript.Equal(agentLockingScript) {
+	agentLockingScriptVerify := agentLockingScript.Copy()
+	agentLockingScriptVerify.AddHardVerify()
+	if !info.AgentLockingScript.Equal(agentLockingScriptVerify) {
 		t.Fatalf("MatchScript provided wrong agent locking script : \n  got  : %s\n  want : %s",
-			info.AgentLockingScript, agentLockingScript)
+			info.AgentLockingScript, agentLockingScriptVerify)
 	}
 
 	if !info.ApproveOutputHash.Equal(approveOutputsHash) {
@@ -76,9 +78,11 @@ func Test_Unlock_Raw(t *testing.T) {
 			info.RefundOutputHash, refundOutputsHash)
 	}
 
-	if !info.RecoverLockingScript.Equal(recoverLockingScript) {
+	recoverLockingScriptVerify := recoverLockingScript.Copy()
+	recoverLockingScriptVerify.AddHardVerify()
+	if !info.RecoverLockingScript.Equal(recoverLockingScriptVerify) {
 		t.Fatalf("MatchScript provided wrong recover locking script : \n  got  : %s\n  want : %s",
-			info.RecoverLockingScript, recoverLockingScript)
+			info.RecoverLockingScript, recoverLockingScriptVerify)
 	}
 
 	if info.RecoverLockTime != recoverLockTime {
@@ -309,14 +313,14 @@ func Test_Unlock_Raw(t *testing.T) {
 					t.Fatalf("Failed to create agent signature : %s", err)
 				}
 
-				agentUnlockingScript := bitcoin.ConcatScript(
+				recoverUnlockingScript := bitcoin.ConcatScript(
 					bitcoin.PushData(append(signature.Bytes(),
 						byte(bitcoin_interpreter.SigHashForkID|bitcoin_interpreter.SigHashAll))),
 					bitcoin.PushData(tt.txSigner.PublicKey().Bytes()),
 				)
 
 				unlockingScript, err = UnlockRecover(ctx, tx, inputIndex, value,
-					lockingScript, agentUnlockingScript)
+					lockingScript, recoverUnlockingScript)
 				if err != nil {
 					t.Fatalf("Failed to create unlocking script : %s", err)
 				}
@@ -441,10 +445,10 @@ func test_Unlocker(t *testing.T, ctx context.Context, sigHashType bitcoin_interp
 	}
 	t.Logf("AgentBitcoinTransferScript (%d bytes) : %s", len(lockingScript), lockingScript)
 
-	agentUnlocker := p2pkh.NewUnlocker(agentKey, true,
+	agentUnlocker := p2pkh.NewUnlockerFull(agentKey, true,
 		bitcoin_interpreter.SigHashForkID|bitcoin_interpreter.SigHashAll, -1)
 
-	recoverUnlocker := p2pkh.NewUnlocker(recoverKey, true,
+	recoverUnlocker := p2pkh.NewUnlockerFull(recoverKey, true,
 		bitcoin_interpreter.SigHashForkID|bitcoin_interpreter.SigHashAll, -1)
 
 	// Create tx
@@ -474,7 +478,7 @@ func test_Unlocker(t *testing.T, ctx context.Context, sigHashType bitcoin_interp
 		t.Fatalf("CanUnlock should return true")
 	}
 
-	unlockingScript, err := approveUnlocker.Unlock(ctx, etx, inputIndex, 0)
+	unlockingScript, err := approveUnlocker.Unlock(ctx, etx, inputIndex)
 	if err != nil {
 		t.Fatalf("Failed to unlock : %s", err)
 	}
@@ -484,9 +488,16 @@ func test_Unlocker(t *testing.T, ctx context.Context, sigHashType bitcoin_interp
 		t.Fatalf("Failed to calculate unlocking size : %s", err)
 	}
 
-	if !within(unlockingSize, len(unlockingScript), 5) {
-		t.Fatalf("Wrong unlocking size : got %d, want %d", unlockingSize, len(unlockingScript))
+	if len(unlockingScript) > unlockingSize {
+		t.Fatalf("Unlocking size above estimate : got %d, want %d", unlockingSize,
+			len(unlockingScript))
 	}
+
+	if len(unlockingScript) > unlockingSize+5 {
+		t.Fatalf("Unlocking size over estimate : got %d, want %d", unlockingSize,
+			len(unlockingScript))
+	}
+
 	t.Logf("Unlock size %d is within %d of estimated %d", len(unlockingScript), 5, unlockingSize)
 
 	tx.TxIn[inputIndex].UnlockingScript = unlockingScript
@@ -522,7 +533,7 @@ func test_Unlocker(t *testing.T, ctx context.Context, sigHashType bitcoin_interp
 		t.Fatalf("CanUnlock should return true")
 	}
 
-	unlockingScript, err = refundUnlocker.Unlock(ctx, etx, inputIndex, 0)
+	unlockingScript, err = refundUnlocker.Unlock(ctx, etx, inputIndex)
 	if err != nil {
 		t.Fatalf("Failed to unlock : %s", err)
 	}
@@ -532,9 +543,16 @@ func test_Unlocker(t *testing.T, ctx context.Context, sigHashType bitcoin_interp
 		t.Fatalf("Failed to calculate unlocking size : %s", err)
 	}
 
-	if !within(unlockingSize, len(unlockingScript), 5) {
-		t.Fatalf("Wrong unlocking size : got %d, want %d", unlockingSize, len(unlockingScript))
+	if len(unlockingScript) > unlockingSize {
+		t.Fatalf("Unlocking size above estimate : got %d, want %d", unlockingSize,
+			len(unlockingScript))
 	}
+
+	if len(unlockingScript) > unlockingSize+5 {
+		t.Fatalf("Unlocking size over estimate : got %d, want %d", unlockingSize,
+			len(unlockingScript))
+	}
+
 	t.Logf("Unlock size %d is within %d of estimated %d", len(unlockingScript), 5, unlockingSize)
 
 	tx.TxIn[inputIndex].UnlockingScript = unlockingScript
@@ -572,7 +590,7 @@ func test_Unlocker(t *testing.T, ctx context.Context, sigHashType bitcoin_interp
 		t.Fatalf("CanUnlock should return true")
 	}
 
-	unlockingScript, err = transferRecoverUnlocker.Unlock(ctx, etx, inputIndex, 0)
+	unlockingScript, err = transferRecoverUnlocker.Unlock(ctx, etx, inputIndex)
 	if err != nil {
 		t.Fatalf("Failed to unlock : %s", err)
 	}
@@ -582,9 +600,16 @@ func test_Unlocker(t *testing.T, ctx context.Context, sigHashType bitcoin_interp
 		t.Fatalf("Failed to calculate unlocking size : %s", err)
 	}
 
-	if !within(unlockingSize, len(unlockingScript), 5) {
-		t.Fatalf("Wrong unlocking size : got %d, want %d", unlockingSize, len(unlockingScript))
+	if len(unlockingScript) > unlockingSize {
+		t.Fatalf("Unlocking size above estimate : got %d, want %d", unlockingSize,
+			len(unlockingScript))
 	}
+
+	if len(unlockingScript) > unlockingSize+5 {
+		t.Fatalf("Unlocking size over estimate : got %d, want %d", unlockingSize,
+			len(unlockingScript))
+	}
+
 	t.Logf("Unlock size %d is within %d of estimated %d", len(unlockingScript), 5, unlockingSize)
 
 	tx.TxIn[inputIndex].UnlockingScript = unlockingScript

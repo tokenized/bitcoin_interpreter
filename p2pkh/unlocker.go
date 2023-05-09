@@ -10,12 +10,21 @@ import (
 
 type Unlocker struct {
 	Key                  bitcoin.Key
-	Verify               bool
+	Verify               bool // Verify is only used with embedded scripts
 	SigHashType          bitcoin_interpreter.SigHashType
 	OpCodeSeparatorIndex int
 }
 
-func NewUnlocker(key bitcoin.Key, verify bool, sigHashType bitcoin_interpreter.SigHashType,
+func NewUnlocker(key bitcoin.Key) *Unlocker {
+	return &Unlocker{
+		Key:                  key,
+		Verify:               false,
+		SigHashType:          bitcoin_interpreter.SigHashDefault,
+		OpCodeSeparatorIndex: -1,
+	}
+}
+
+func NewUnlockerFull(key bitcoin.Key, verify bool, sigHashType bitcoin_interpreter.SigHashType,
 	opCodeSeparatorIndex int) *Unlocker {
 	return &Unlocker{
 		Key:                  key,
@@ -26,12 +35,27 @@ func NewUnlocker(key bitcoin.Key, verify bool, sigHashType bitcoin_interpreter.S
 }
 
 func (u *Unlocker) Unlock(ctx context.Context, tx bitcoin_interpreter.TransactionWithOutputs,
+	inputIndex int) (bitcoin.Script, error) {
+	return u.SubUnlock(ctx, tx, inputIndex, 0)
+}
+
+func (u *Unlocker) SubUnlock(ctx context.Context, tx bitcoin_interpreter.TransactionWithOutputs,
 	inputIndex int, lockingScriptOffset int) (bitcoin.Script, error) {
 	return Unlock(tx, inputIndex, lockingScriptOffset, u.Key, u.SigHashType, u.OpCodeSeparatorIndex,
 		u.Verify)
 }
 
 func (u *Unlocker) UnlockingSize(lockingScript bitcoin.Script) (int, error) {
+	scriptHash, err := MatchScript(lockingScript, u.Verify)
+	if err != nil {
+		return 0, bitcoin_interpreter.ScriptNotMatching
+	}
+
+	keyHash := bitcoin.Hash160(u.Key.PublicKey().Bytes())
+	if !bytes.Equal(scriptHash[:], keyHash) {
+		return 0, bitcoin_interpreter.ScriptNotMatching
+	}
+
 	return UnlockingSize, nil
 }
 

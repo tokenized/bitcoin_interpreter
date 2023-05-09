@@ -37,6 +37,8 @@ const (
 	SigHashAnyOneCanPay SigHashType = 0x80 // When combined, only sign contained input
 	SigHashForkID       SigHashType = 0x40
 
+	SigHashDefault SigHashType = SigHashForkID | SigHashAll
+
 	// sigHashTypeMask defines masks the bits of the hash type used to identify which outputs are
 	// signed.
 	sigHashTypeMask = 0x1f
