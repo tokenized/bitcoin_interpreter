@@ -47,21 +47,13 @@ type Info struct {
 
 // ApproveMatches returns true if the ApproveOutputHash matches the locking script and value.
 func (i Info) ApproveMatches(lockingScript bitcoin.Script, value uint64) bool {
-	output := wire.NewTxOut(value, lockingScript)
-	var outputBuf bytes.Buffer
-	output.Serialize(&outputBuf, 0, 0)
-	outputHash, _ := bitcoin.NewHash32(bitcoin.DoubleSha256(outputBuf.Bytes()))
-
+	outputHash := wire.NewTxOut(value, lockingScript).OutputHash()
 	return outputHash.Equal(&i.ApproveOutputHash)
 }
 
 // RefundMatches returns true if the RefundOutputHash matches the locking script and value.
 func (i Info) RefundMatches(lockingScript bitcoin.Script, value uint64) bool {
-	output := wire.NewTxOut(value, lockingScript)
-	var outputBuf bytes.Buffer
-	output.Serialize(&outputBuf, 0, 0)
-	outputHash, _ := bitcoin.NewHash32(bitcoin.DoubleSha256(outputBuf.Bytes()))
-
+	outputHash := wire.NewTxOut(value, lockingScript).OutputHash()
 	return outputHash.Equal(&i.RefundOutputHash)
 }
 
@@ -73,28 +65,29 @@ func CreateScript(agentLockingScript, approveLockingScript, refundLockingScript 
 	value uint64, recoverLockingScript bitcoin.Script,
 	recoverLockTime uint32) (bitcoin.Script, error) {
 
+	approveOutputHash := wire.NewTxOut(value, approveLockingScript).OutputHash()
+	refundOutputHash := wire.NewTxOut(value, refundLockingScript).OutputHash()
+
+	return CreateScriptFromOutputHashes(agentLockingScript, approveOutputHash, refundOutputHash,
+		recoverLockingScript, recoverLockTime)
+}
+
+func CreateScriptFromOutputHashes(agentLockingScript bitcoin.Script,
+	approveOutputHash, refundOutputHash bitcoin.Hash32, recoverLockingScript bitcoin.Script,
+	recoverLockTime uint32) (bitcoin.Script, error) {
+
 	agentLockingScript = agentLockingScript.Copy()
 	if err := agentLockingScript.AddHardVerify(); err != nil {
 		return nil, errors.Wrap(err, "recover add verify")
 	}
 
-	approveOutput := wire.NewTxOut(value, approveLockingScript)
-	var approveOutputBuf bytes.Buffer
-	approveOutput.Serialize(&approveOutputBuf, 0, 0)
-	approveOutputsHash, _ := bitcoin.NewHash32(bitcoin.DoubleSha256(approveOutputBuf.Bytes()))
-
-	refundOutput := wire.NewTxOut(value, refundLockingScript)
-	var refundOutputBuf bytes.Buffer
-	refundOutput.Serialize(&refundOutputBuf, 0, 0)
-	refundOutputsHash, _ := bitcoin.NewHash32(bitcoin.DoubleSha256(refundOutputBuf.Bytes()))
-
 	agentFunction := bitcoin.ConcatScript(
 		agentLockingScript, // Verify this is the agent.
 
 		bitcoin.OP_NOTIF, // OP_0 is approve
-		check_signature_preimage.CheckPreimageOutputsHashScript(*approveOutputsHash, true),
+		check_signature_preimage.CheckPreimageOutputsHashScript(approveOutputHash, true),
 		bitcoin.OP_ELSE, // Assume refund
-		check_signature_preimage.CheckPreimageOutputsHashScript(*refundOutputsHash, true),
+		check_signature_preimage.CheckPreimageOutputsHashScript(refundOutputHash, true),
 		bitcoin.OP_ENDIF,
 	)
 
