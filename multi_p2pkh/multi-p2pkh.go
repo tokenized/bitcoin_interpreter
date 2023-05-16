@@ -8,8 +8,6 @@ import (
 )
 
 const (
-	LockingSize = 4 * bitcoin.Hash20Size
-
 	SubUnlockingSize = bitcoin_interpreter.MaxSignaturesPushDataSize +
 		bitcoin_interpreter.PublicKeyPushDataSize + 1
 )
