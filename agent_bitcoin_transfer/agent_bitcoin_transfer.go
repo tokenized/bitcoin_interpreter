@@ -12,6 +12,10 @@ import (
 	"github.com/pkg/errors"
 )
 
+const (
+	OpCodeSeparatorIndex = 1
+)
+
 var (
 	// AgentLockingScriptOffset is the offset within the script where the agent locking script
 	// starts.
@@ -112,12 +116,31 @@ func CreateScriptFromOutputHashes(agentLockingScript bitcoin.Script,
 		agentFunction,
 
 		// Assume the recover branch.
-		bitcoin.OP_ELSE, recoverFunction,
+		bitcoin.OP_ELSE,
+		recoverFunction,
 
 		bitcoin.OP_ENDIF,
 
 		check_signature_preimage.CreateScript(sigHashType),
 	), nil
+}
+
+// Check returns the TxNeedsMalleation error if the current tx will need malleation to unlock the
+// provided locking script.
+func Check(ctx context.Context, tx *wire.MsgTx, inputIndex int, inputLockingScript bitcoin.Script,
+	value uint64, hashCache *bitcoin_interpreter.SigHashCache) error {
+
+	// This will return that the script isn't unlocked because we are just checking the
+	// "check preimage" function, so we need to ignore other errors.
+	sigHashType := bitcoin_interpreter.SigHashForkID | bitcoin_interpreter.SigHashSingle
+	if _, err := check_signature_preimage.Unlock(ctx, tx, inputIndex, inputLockingScript,
+		OpCodeSeparatorIndex, value, sigHashType, hashCache); err != nil {
+		if errors.Cause(err) == check_signature_preimage.TxNeedsMalleation {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func UnlockApprove(ctx context.Context, tx *wire.MsgTx, inputIndex int, inputValue uint64,
@@ -130,7 +153,7 @@ func UnlockApprove(ctx context.Context, tx *wire.MsgTx, inputIndex int, inputVal
 	hashCache := &bitcoin_interpreter.SigHashCache{}
 
 	preimageUnlockingScript, err := check_signature_preimage.Unlock(ctx, tx, inputIndex,
-		inputLockingScript, 1, inputValue, sigHashType, hashCache)
+		inputLockingScript, OpCodeSeparatorIndex, inputValue, sigHashType, hashCache)
 	if err != nil {
 		return nil, errors.Wrap(err, "preimage")
 	}
@@ -154,7 +177,7 @@ func UnlockRefund(ctx context.Context, tx *wire.MsgTx, inputIndex int, inputValu
 	hashCache := &bitcoin_interpreter.SigHashCache{}
 
 	preimageUnlockingScript, err := check_signature_preimage.Unlock(ctx, tx, inputIndex,
-		inputLockingScript, 1, inputValue, sigHashType, hashCache)
+		inputLockingScript, OpCodeSeparatorIndex, inputValue, sigHashType, hashCache)
 	if err != nil {
 		return nil, errors.Wrap(err, "preimage")
 	}
@@ -178,7 +201,7 @@ func UnlockRecover(ctx context.Context, tx *wire.MsgTx, inputIndex int, inputVal
 	hashCache := &bitcoin_interpreter.SigHashCache{}
 
 	preimageUnlockingScript, err := check_signature_preimage.Unlock(ctx, tx, inputIndex,
-		inputLockingScript, 1, inputValue, sigHashType, hashCache)
+		inputLockingScript, OpCodeSeparatorIndex, inputValue, sigHashType, hashCache)
 	if err != nil {
 		return nil, errors.Wrap(err, "preimage")
 	}

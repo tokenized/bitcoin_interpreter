@@ -3,8 +3,10 @@ package agent_bitcoin_transfer
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"fmt"
 	"math/rand"
+	"os"
 	"testing"
 	"time"
 
@@ -408,6 +410,243 @@ func Test_MatchScript_NotMatching(t *testing.T) {
 			}
 		})
 	}
+}
+
+func Test_Fixtures(t *testing.T) {
+	ctx := logger.ContextWithLogger(context.Background(), true, false, "")
+
+	tests := []struct {
+		name       string
+		filename   string
+		inputIndex int
+		baseErr    error
+	}{
+		{
+			name:       "non-minimally encoded script number",
+			filename:   "e4e3eec19b12432464dfadc112e8bfa9ba2fc207c7e1b89231cd46b441386c9b.hex",
+			inputIndex: 0,
+			baseErr:    bitcoin_interpreter.ErrNonMinimallyEncodedNumber,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h, err := os.ReadFile("fixtures/" + tt.filename)
+			if err != nil {
+				t.Fatalf("Failed to read file : %s", err)
+			}
+
+			b, err := hex.DecodeString(string(h))
+			if err != nil {
+				t.Fatalf("Failed to convert hex : %s", err)
+			}
+
+			tx := &wire.MsgTx{}
+			if err := tx.Deserialize(bytes.NewReader(b)); err != nil {
+				t.Fatalf("Failed to decode tx : %s", err)
+			}
+
+			etx := &expanded_tx.ExpandedTx{
+				Tx: tx,
+			}
+
+			for _, txin := range tx.TxIn {
+				if etx.Ancestors.GetTx(txin.PreviousOutPoint.Hash) != nil {
+					continue
+				}
+
+				h, err := os.ReadFile("fixtures/input_" + txin.PreviousOutPoint.Hash.String() + ".hex")
+				if err != nil {
+					t.Fatalf("Failed to read input file : %s", err)
+				}
+
+				b, err := hex.DecodeString(string(h))
+				if err != nil {
+					t.Fatalf("Failed to convert input hex : %s", err)
+				}
+
+				tx := &wire.MsgTx{}
+				if err := tx.Deserialize(bytes.NewReader(b)); err != nil {
+					t.Fatalf("Failed to decode input tx : %s", err)
+				}
+
+				etx.Ancestors = append(etx.Ancestors, &expanded_tx.AncestorTx{
+					Tx: tx,
+				})
+			}
+
+			t.Logf("Tx : %s", etx)
+
+			hashCache := &bitcoin_interpreter.SigHashCache{}
+			interpreter := bitcoin_interpreter.NewInterpreter()
+			txin := etx.Tx.TxIn[tt.inputIndex]
+
+			inputTx := etx.Ancestors.GetTx(txin.PreviousOutPoint.Hash)
+			if inputTx == nil {
+				t.Fatalf("Failed to get input tx")
+			}
+
+			if int(txin.PreviousOutPoint.Index) >= len(inputTx.Tx.TxOut) {
+				t.Fatalf("Invalid outpoint index : %d >= %d", txin.PreviousOutPoint.Index,
+					len(inputTx.Tx.TxOut))
+			}
+
+			output := inputTx.Tx.TxOut[txin.PreviousOutPoint.Index]
+
+			t.Logf("Unlocking script")
+			var finalErr error
+			if err := interpreter.Execute(ctx, etx.Tx.TxIn[tt.inputIndex].UnlockingScript, etx.Tx,
+				tt.inputIndex, output.Value, hashCache); err != nil {
+				t.Logf("Failed to verify unlocking script : %s", err)
+				finalErr = err
+			}
+
+			if finalErr == nil {
+				t.Logf("Locking script")
+				if err := interpreter.Execute(ctx, output.LockingScript, etx.Tx, tt.inputIndex,
+					output.Value, hashCache); err != nil {
+					t.Logf("Failed to verify locking script : %s", err)
+					finalErr = err
+				}
+			}
+
+			if finalErr == nil {
+				if !interpreter.IsUnlocked() {
+					t.Errorf("Script should be unlocked : %s", interpreter.Error())
+				} else {
+					t.Logf("Input %d unlocked", tt.inputIndex)
+				}
+			}
+
+			if finalErr == nil {
+				finalErr = interpreter.Error()
+			}
+
+			if tt.baseErr == nil {
+				if interpreter.Error() != nil {
+					t.Errorf("Interpreter error should be nil : %s", interpreter.Error())
+				}
+			} else if finalErr == nil {
+				t.Errorf("Interpreter should have returned error")
+			} else if errors.Cause(finalErr) != tt.baseErr {
+				t.Errorf("Wrong interpreter error : got %s, want %s", finalErr, tt.baseErr)
+			} else {
+				t.Logf("Interpreter returned correct error : %s", finalErr)
+			}
+		})
+	}
+}
+
+// Test_Check verifies that the Check function will detect when a tx malleation will be needed
+// without needing to have the agent key to actually unlock it.
+func Test_Check(t *testing.T) {
+	ctx := logger.ContextWithLogger(context.Background(), true, false, "")
+	sigHashType := bitcoin_interpreter.SigHashForkID | bitcoin_interpreter.SigHashSingle
+
+	totalMalleations := 0
+	total := 1000
+	for i := 0; i < total; i++ {
+		t.Run(fmt.Sprintf("random%04d", i), func(t *testing.T) {
+			if txBytes, malleations, err := check_Random(ctx, t, sigHashType); err != nil {
+				t.Errorf("Failed Tx Bytes (%s) : %x", err, txBytes)
+			} else {
+				totalMalleations += malleations
+			}
+		})
+	}
+
+	t.Logf("%d of %d transaction malleations needed", totalMalleations, total)
+}
+
+func check_Random(ctx context.Context, t *testing.T,
+	sigHashType bitcoin_interpreter.SigHashType) ([]byte, int, error) {
+
+	agentKey, _ := bitcoin.GenerateKey(bitcoin.MainNet)
+	agentLockingScript, _ := agentKey.LockingScript()
+
+	recoverKey, _ := bitcoin.GenerateKey(bitcoin.MainNet)
+	recoverLockingScript, _ := recoverKey.LockingScript()
+
+	approveKey, _ := bitcoin.GenerateKey(bitcoin.MainNet)
+	approveLockingScript, _ := approveKey.LockingScript()
+
+	refundKey, _ := bitcoin.GenerateKey(bitcoin.MainNet)
+	refundLockingScript, _ := refundKey.LockingScript()
+
+	recoverLockTime := uint32(time.Now().Unix()) + uint32(rand.Intn(100000))
+
+	value := uint64(rand.Intn(10000000) + 1)
+
+	lockingScript, err := CreateScript(agentLockingScript, approveLockingScript,
+		refundLockingScript, value, recoverLockingScript, recoverLockTime)
+	if err != nil {
+		return nil, 0, errors.Wrap(err, "create")
+	}
+
+	tx := wire.NewMsgTx(1)
+
+	// Add input to spend specified output.
+	inputIndex := len(tx.TxIn)
+	var previousTxHash bitcoin.Hash32
+	rand.Read(previousTxHash[:])
+	tx.AddTxIn(wire.NewTxIn(wire.NewOutPoint(&previousTxHash, 0), nil))
+
+	tx.AddTxOut(wire.NewTxOut(value, approveLockingScript))
+
+	for i := 0; i < 3; i++ {
+		hashCache := &bitcoin_interpreter.SigHashCache{}
+		needsMalleation := false
+		if err := Check(ctx, tx, 0, lockingScript, value, hashCache); err != nil {
+			if errors.Cause(err) == check_signature_preimage.TxNeedsMalleation {
+				t.Logf("Tx needs malleation")
+				needsMalleation = true
+			} else {
+				t.Fatalf("Failed to get signature preimage : %s", err)
+			}
+		}
+
+		agentSigHash, err := bitcoin_interpreter.SignatureHash(tx, inputIndex, lockingScript, -1,
+			value, sigHashType, hashCache)
+		if err != nil {
+			t.Fatalf("Failed to create sig hash : %s", err)
+		}
+
+		agentSignature, err := agentKey.Sign(*agentSigHash)
+		if err != nil {
+			t.Fatalf("Failed to create agent signature : %s", err)
+		}
+
+		agentUnlockingScript := bitcoin.ConcatScript(
+			bitcoin.PushData(append(agentSignature.Bytes(), byte(sigHashType))),
+			bitcoin.PushData(agentKey.PublicKey().Bytes()),
+		)
+
+		if _, err := UnlockApprove(ctx, tx, inputIndex, value, lockingScript,
+			agentUnlockingScript); err != nil {
+			if errors.Cause(err) == check_signature_preimage.TxNeedsMalleation {
+				if !needsMalleation {
+					t.Errorf("Malleation need not detected by Check")
+					txBuf := &bytes.Buffer{}
+					tx.Serialize(txBuf)
+					return txBuf.Bytes(), 0, err
+				}
+			} else {
+				txBuf := &bytes.Buffer{}
+				tx.Serialize(txBuf)
+				return txBuf.Bytes(), 0, err
+			}
+		}
+
+		if !needsMalleation {
+			return nil, i, nil
+		}
+
+		tx.LockTime++
+	}
+
+	txBuf := &bytes.Buffer{}
+	tx.Serialize(txBuf)
+	return txBuf.Bytes(), 0, errors.New("Failed to unlock script")
 }
 
 func Test_Unlocker(t *testing.T) {

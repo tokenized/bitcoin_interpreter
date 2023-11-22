@@ -94,6 +94,38 @@ func init() {
 
 	// Script_FixNegative changes the top item on the stack, if it's high bit is set, to a positive
 	// by adding the zero byte.
+	// Script_FixNegative = bitcoin.ConcatScript(
+	// 	bitcoin.OP_DUP,
+	// 	bitcoin.BytePushData(31), bitcoin.OP_SPLIT, bitcoin.OP_NIP, // get first byte
+
+	// 	// save first byte
+	// 	// bitcoin.OP_DUP,
+
+	// 	// check if first byte has high bit set
+	// 	bitcoin.PushData([]byte{0x80}), bitcoin.OP_AND,
+	// 	bitcoin.PushData([]byte{0x80}), bitcoin.OP_EQUAL,
+	// 	bitcoin.OP_IF,
+
+	// 	// append zero
+	// 	// bitcoin.OP_DROP,
+	// 	bitcoin.PushData([]byte{0x00}), bitcoin.OP_CAT,
+
+	// 	// bitcoin.OP_ELSE,
+
+	// 	// // check if first byte is zero
+	// 	// bitcoin.PushData([]byte{0x00}), bitcoin.OP_EQUAL,
+	// 	// bitcoin.OP_IF,
+	// 	// // bitcoin.BytePushData(31), bitcoin.OP_SPLIT, bitcoin.OP_DROP, // drop first byte
+	// 	// // append 0x80
+	// 	// bitcoin.PushData([]byte{0x80}), bitcoin.OP_CAT,
+
+	// 	// bitcoin.OP_ENDIF,
+
+	// 	bitcoin.OP_ENDIF,
+	// )
+
+	// OP_LESSTHAN fails if the hash is not a minimally encoded number which happens if the first
+	// byte is zero. If this happens then the tx needs malleation.
 	Script_FixNegative = bitcoin.ConcatScript(
 		bitcoin.OP_DUP,
 		bitcoin.OP_0, bitcoin.OP_LESSTHAN,

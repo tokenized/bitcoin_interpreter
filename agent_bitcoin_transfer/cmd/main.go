@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"os"
 	"strconv"
@@ -53,6 +55,11 @@ func main() {
 	}
 
 	switch os.Args[1] {
+	case "parse":
+		if err := ParseAgentTransfer(ctx, cfg, os.Args[2:]); err != nil {
+			logger.Fatal(ctx, "Failed to parse agent transfer : %s", err)
+		}
+
 	case "create_agent_output":
 		if err := CreateAgentOutput(ctx, cfg, os.Args[2:]); err != nil {
 			logger.Fatal(ctx, "Failed to create agent output : %s", err)
@@ -63,6 +70,58 @@ func main() {
 			logger.Fatal(ctx, "Failed to complete agent transfer : %s", err)
 		}
 	}
+}
+
+func ParseAgentTransfer(ctx context.Context, config *Config, args []string) error {
+	if len(args) != 1 {
+		return errors.New("Wrong argument count: parse [Script]")
+	}
+
+	b, err := hex.DecodeString(args[0])
+	if err != nil {
+		return errors.Wrap(err, "hex")
+	}
+
+	lockingScript := bitcoin.Script(b)
+	fmt.Printf("Script : %s\n", lockingScript)
+
+	info, err := agent_bitcoin_transfer.MatchScript(lockingScript)
+	if err != nil {
+		return errors.Wrap(err, "match")
+	}
+
+	js, err := json.MarshalIndent(info, "", "  ")
+	if err != nil {
+		return errors.Wrap(err, "json marshal")
+	}
+
+	fmt.Printf("Info : %s\n", js)
+
+	agentLockingScript := info.AgentLockingScript.Copy()
+	agentLockingScript.RemoveHardVerify()
+	fmt.Printf("Agent Locking Script : %s\n", agentLockingScript)
+	agentRA, err := bitcoin.RawAddressFromLockingScript(agentLockingScript)
+	if err != nil {
+		return errors.Wrap(err, "agent address")
+	}
+
+	fmt.Printf("Agent Address : %s\n", bitcoin.NewAddressFromRawAddress(agentRA, bitcoin.MainNet))
+
+	recoverLockingScript := info.RecoverLockingScript.Copy()
+	recoverLockingScript.RemoveHardVerify()
+	fmt.Printf("Recover Locking Script : %s\n", recoverLockingScript)
+	recoverRA, err := bitcoin.RawAddressFromLockingScript(recoverLockingScript)
+	if err != nil {
+		return errors.Wrap(err, "recover address")
+	}
+
+	fmt.Printf("Recover Address : %s\n", bitcoin.NewAddressFromRawAddress(recoverRA,
+		bitcoin.MainNet))
+
+	refundOutputHash := wire.NewTxOut(10000, recoverLockingScript).OutputHash()
+	fmt.Printf("Refund Output Hash : %s\n", refundOutputHash)
+
+	return nil
 }
 
 func CreateAgentOutput(ctx context.Context, config *Config, args []string) error {

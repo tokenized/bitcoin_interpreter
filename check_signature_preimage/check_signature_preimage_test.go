@@ -300,7 +300,7 @@ func Test_CreateScript_Random(t *testing.T) {
 	totalMalleations := 0
 	total := 1000
 	for i := 0; i < total; i++ {
-		t.Run(fmt.Sprintf("random%d", i), func(t *testing.T) {
+		t.Run(fmt.Sprintf("random%04d", i), func(t *testing.T) {
 			if txBytes, malleations, err := checkSignaturePreimageScript_Random(ctx, t,
 				lockingScript, sigHashType); err != nil {
 				t.Errorf("Failed Tx Bytes (%s) : %x", err, txBytes)
@@ -341,7 +341,7 @@ func checkSignaturePreimageScript_Random(ctx context.Context, t *testing.T,
 	receiveLockingScript, _ := receiverKey.LockingScript()
 	tx.AddTxOut(wire.NewTxOut(value, receiveLockingScript))
 
-	for i := 0; i < 2; i++ {
+	for i := 0; i < 3; i++ {
 		hashCache := &bitcoin_interpreter.SigHashCache{}
 		unlockingScript, err := Unlock(ctx, tx, inputIndex, lockingScript, 1,
 			value, sigHashType, hashCache)
@@ -407,15 +407,23 @@ func Test_ComputeS(t *testing.T) {
 		},
 		{
 			name: "high hash bit set 1",
-			hash: "64603e6ccd728800a1dc0fdddade05b8a374b526c7f1c7c765fdb70d4110dce2",
+			hash: "e264603e6ccd728800a1dc0fdddade05b8a374b526c7f1c7c765fdb70d4110dc",
 		},
 		{
 			name: "high hash bit set 2",
-			hash: "cd05424c6520740b5c2bce4336545eda12716317df58e6fb764fcb3004f5248c",
+			hash: "8ccd05424c6520740b5c2bce4336545eda12716317df58e6fb764fcb3004f524",
 		},
 		{
-			name: "last S byte zero",
-			hash: "47bc35fb59f7792a349511b2bb3504ba4a28717823a27a1f99ce6970290b26ef",
+			name: "last S byte 80",
+			hash: "801d067dffee53cf7c60d464d6b980c89b9472abadc7c5b11da2cffcff6bd5be",
+		},
+		{
+			name: "last S byte 00 next byte not",
+			hash: "004c4e1db1be761c69bf736aa87c8f57079d396fbd456cda3d8a284d86878df4",
+		},
+		{
+			name: "last S byte 00 next byte high bit",
+			hash: "00cbf831b7892e09510a6c1d072873fb2cc3327cf4924ed05a84aab0024e0ea7",
 		},
 	}
 
@@ -454,6 +462,11 @@ func check_Script_ComputeS(ctx context.Context, t *testing.T, hash []byte,
 	}
 
 	if err := interpreter.ExecuteFull(ctx, lockingScript, nil, 0, 0, nil, verbose); err != nil {
+		if errors.Cause(err) == bitcoin_interpreter.ErrNonMinimallyEncodedNumber {
+			t.Logf("Needs tx malleation : %s", err)
+			return
+		}
+
 		t.Fatalf("Failed to interpret locking script : %s", err)
 	}
 

@@ -16,15 +16,16 @@ import (
 )
 
 var (
-	ErrStackEmpty         = errors.New("Stack Empty")
-	ErrAltStackEmpty      = errors.New("Alt Stack Empty")
-	ErrScriptInvalid      = errors.New("Script Invalid")
-	ErrVerifyFailed       = errors.New("Verify Failed")
-	ErrMalformedSignature = errors.New("Malformed Signature")
-	ErrNotUnlocked        = errors.New("Not Unlocked")
-	ErrOpCodeDisabled     = errors.New("Op Code Disabled")
-	ErrBadOpCode          = errors.New("Bad Op Code")
-	ErrNotImplemented     = errors.New("Not Implemented")
+	ErrStackEmpty                = errors.New("Stack Empty")
+	ErrAltStackEmpty             = errors.New("Alt Stack Empty")
+	ErrScriptInvalid             = errors.New("Script Invalid")
+	ErrVerifyFailed              = errors.New("Verify Failed")
+	ErrMalformedSignature        = errors.New("Malformed Signature")
+	ErrNonMinimallyEncodedNumber = errors.New("Non-Minimally Encoded Number")
+	ErrNotUnlocked               = errors.New("Not Unlocked")
+	ErrOpCodeDisabled            = errors.New("Op Code Disabled")
+	ErrBadOpCode                 = errors.New("Bad Op Code")
+	ErrNotImplemented            = errors.New("Not Implemented")
 )
 
 type Interpreter struct {
@@ -573,7 +574,11 @@ func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.Scrip
 		if err != nil {
 			return errors.Wrapf(ErrScriptInvalid, "stack empty: %s", item)
 		}
-		c := decodeInteger(n)
+		c, err := decodeInteger(n)
+		if err != nil {
+			return errors.Wrapf(err, "%s", item)
+		}
+
 		if !c.IsInt64() {
 			return errors.Wrapf(ErrScriptInvalid, "count more than 64 bits: %s", item)
 		}
@@ -595,7 +600,11 @@ func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.Scrip
 		if err != nil {
 			return errors.Wrapf(ErrScriptInvalid, "stack empty: %s", item)
 		}
-		c := decodeInteger(n)
+		c, err := decodeInteger(n)
+		if err != nil {
+			return errors.Wrapf(err, "%s", item)
+		}
+
 		if !c.IsInt64() {
 			return errors.Wrapf(ErrScriptInvalid, "count more than 64 bits: %s", item)
 		}
@@ -679,7 +688,11 @@ func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.Scrip
 		if err != nil {
 			return errors.Wrapf(ErrScriptInvalid, "stack empty: %s", item)
 		}
-		c := decodeInteger(n)
+		c, err := decodeInteger(n)
+		if err != nil {
+			return errors.Wrapf(err, "%s", item)
+		}
+
 		if !c.IsInt64() {
 			return errors.Wrapf(ErrScriptInvalid, "count more than 64 bits: %s", item)
 		}
@@ -707,7 +720,11 @@ func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.Scrip
 		if err != nil {
 			return errors.Wrapf(ErrScriptInvalid, "stack empty: %s", item)
 		}
-		c := decodeInteger(n)
+		c, err := decodeInteger(n)
+		if err != nil {
+			return errors.Wrapf(err, "%s", item)
+		}
+
 		if !c.IsInt64() {
 			return errors.Wrapf(ErrScriptInvalid, "count more than 64 bits: %s", item)
 		}
@@ -727,13 +744,22 @@ func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.Scrip
 		}
 
 		// Minimally encode number
-		b := encodeInteger(decodeInteger(v))
+		vc, err := decodeInteger(v)
+		if err != nil {
+			return errors.Wrapf(err, "%s", item)
+		}
+
+		b := encodeInteger(vc)
 		if count < int64(len(b)) {
 			return errors.Wrapf(ErrScriptInvalid,
 				"value size greater than count: %s: count %d, size %d", item, count, len(b))
 		}
 
-		b = padNumber(b, int(count))
+		b, err = padNumber(b, int(count))
+		if err != nil {
+			return errors.Wrapf(err, "%s", item)
+		}
+
 		i.pushStack(b)
 
 	case bitcoin.OP_BIN2NUM: // Convert the top stack item into a number value
@@ -742,7 +768,12 @@ func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.Scrip
 			return errors.Wrapf(ErrScriptInvalid, "stack empty: %s", item)
 		}
 
-		b = encodeInteger(decodeInteger(b))
+		c, err := decodeIntegerFull(b, false)
+		if err != nil {
+			return errors.Wrapf(err, "%s", item)
+		}
+
+		b = encodeInteger(c)
 		i.pushStack(b)
 
 	case bitcoin.OP_SIZE: // Push the length of the top stack item onto the stack
@@ -799,7 +830,11 @@ func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.Scrip
 		if err != nil {
 			return errors.Wrapf(ErrScriptInvalid, "stack empty: %s", item)
 		}
-		n := decodeInteger(b)
+
+		n, err := decodeInteger(b)
+		if err != nil {
+			return errors.Wrapf(err, "%s", item)
+		}
 
 		i.pushStack(encodeInteger(n.Add(n, big.NewInt(1))))
 
@@ -814,7 +849,11 @@ func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.Scrip
 		if err != nil {
 			return errors.Wrapf(ErrScriptInvalid, "stack empty: %s", item)
 		}
-		n := decodeInteger(b)
+
+		n, err := decodeInteger(b)
+		if err != nil {
+			return errors.Wrapf(err, "%s", item)
+		}
 
 		i.pushStack(encodeInteger(n.Neg(n)))
 
@@ -823,7 +862,11 @@ func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.Scrip
 		if err != nil {
 			return errors.Wrapf(ErrScriptInvalid, "stack empty: %s", item)
 		}
-		n := decodeInteger(b)
+
+		n, err := decodeInteger(b)
+		if err != nil {
+			return errors.Wrapf(err, "%s", item)
+		}
 
 		i.pushStack(encodeInteger(n.Abs(n)))
 
@@ -832,7 +875,11 @@ func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.Scrip
 		if err != nil {
 			return errors.Wrapf(ErrScriptInvalid, "stack empty: %s", item)
 		}
-		n := decodeInteger(b)
+
+		n, err := decodeInteger(b)
+		if err != nil {
+			return errors.Wrapf(err, "%s", item)
+		}
 
 		if n.Cmp(big.NewInt(0)) == 0 {
 			i.pushStack(encodePrimitiveInteger(1))
@@ -845,7 +892,11 @@ func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.Scrip
 		if err != nil {
 			return errors.Wrapf(ErrScriptInvalid, "stack empty: %s", item)
 		}
-		n := decodeInteger(b)
+
+		n, err := decodeInteger(b)
+		if err != nil {
+			return errors.Wrapf(err, "%s", item)
+		}
 
 		if n.Cmp(big.NewInt(0)) != 0 {
 			i.pushStack(encodePrimitiveInteger(1))
@@ -858,13 +909,21 @@ func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.Scrip
 		if err != nil {
 			return errors.Wrapf(ErrScriptInvalid, "stack empty: %s", item)
 		}
-		n1 := decodeInteger(b1)
+
+		n1, err := decodeInteger(b1)
+		if err != nil {
+			return errors.Wrapf(err, "b1: %s", item)
+		}
 
 		b2, err := i.popStack()
 		if err != nil {
 			return errors.Wrapf(ErrScriptInvalid, "stack empty: %s", item)
 		}
-		n2 := decodeInteger(b2)
+
+		n2, err := decodeInteger(b2)
+		if err != nil {
+			return errors.Wrapf(err, "b2: %s", item)
+		}
 
 		i.pushStack(encodeInteger(n1.Add(n1, n2)))
 
@@ -873,13 +932,21 @@ func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.Scrip
 		if err != nil {
 			return errors.Wrapf(ErrScriptInvalid, "stack empty: %s", item)
 		}
-		n2 := decodeInteger(b2)
+
+		n2, err := decodeInteger(b2)
+		if err != nil {
+			return errors.Wrapf(err, "b2: %s", item)
+		}
 
 		b1, err := i.popStack()
 		if err != nil {
 			return errors.Wrapf(ErrScriptInvalid, "stack empty: %s", item)
 		}
-		n1 := decodeInteger(b1)
+
+		n1, err := decodeInteger(b1)
+		if err != nil {
+			return errors.Wrapf(err, "b1: %s", item)
+		}
 
 		i.pushStack(encodeInteger(n1.Sub(n1, n2)))
 
@@ -888,13 +955,21 @@ func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.Scrip
 		if err != nil {
 			return errors.Wrapf(ErrScriptInvalid, "stack empty: %s", item)
 		}
-		n1 := decodeInteger(b1)
+
+		n1, err := decodeInteger(b1)
+		if err != nil {
+			return errors.Wrapf(err, "b1: %s", item)
+		}
 
 		b2, err := i.popStack()
 		if err != nil {
 			return errors.Wrapf(ErrScriptInvalid, "stack empty: %s", item)
 		}
-		n2 := decodeInteger(b2)
+
+		n2, err := decodeInteger(b2)
+		if err != nil {
+			return errors.Wrapf(err, "b2: %s", item)
+		}
 
 		i.pushStack(encodeInteger(n1.Mul(n1, n2)))
 
@@ -903,13 +978,21 @@ func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.Scrip
 		if err != nil {
 			return errors.Wrapf(ErrScriptInvalid, "stack empty: %s", item)
 		}
-		n2 := decodeInteger(b2)
+
+		n2, err := decodeInteger(b2)
+		if err != nil {
+			return errors.Wrapf(err, "b2: %s", item)
+		}
 
 		b1, err := i.popStack()
 		if err != nil {
 			return errors.Wrapf(ErrScriptInvalid, "stack empty: %s", item)
 		}
-		n1 := decodeInteger(b1)
+
+		n1, err := decodeInteger(b1)
+		if err != nil {
+			return errors.Wrapf(err, "b1: %s", item)
+		}
 
 		if n2.Sign() == 0 {
 			return errors.Wrapf(ErrScriptInvalid, "divide by zero: %s", item)
@@ -923,13 +1006,21 @@ func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.Scrip
 		if err != nil {
 			return errors.Wrapf(ErrScriptInvalid, "stack empty: %s", item)
 		}
-		n2 := decodeInteger(b2)
+
+		n2, err := decodeInteger(b2)
+		if err != nil {
+			return errors.Wrapf(err, "b2: %s", item)
+		}
 
 		b1, err := i.popStack()
 		if err != nil {
 			return errors.Wrapf(ErrScriptInvalid, "stack empty: %s", item)
 		}
-		n1 := decodeInteger(b1)
+
+		n1, err := decodeInteger(b1)
+		if err != nil {
+			return errors.Wrapf(err, "b1: %s", item)
+		}
 
 		if n2.Sign() == 0 {
 			return errors.Wrapf(ErrScriptInvalid, "divide by zero: %s", item)
@@ -942,13 +1033,21 @@ func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.Scrip
 		if err != nil {
 			return errors.Wrapf(ErrScriptInvalid, "stack empty: %s", item)
 		}
-		n1 := decodeInteger(b1)
+
+		n1, err := decodeInteger(b1)
+		if err != nil {
+			return errors.Wrapf(err, "b1: %s", item)
+		}
 
 		b2, err := i.popStack()
 		if err != nil {
 			return errors.Wrapf(ErrScriptInvalid, "stack empty: %s", item)
 		}
-		n2 := decodeInteger(b2)
+
+		n2, err := decodeInteger(b2)
+		if err != nil {
+			return errors.Wrapf(err, "b2: %s", item)
+		}
 
 		if !n2.IsInt64() {
 			return errors.Wrapf(ErrScriptInvalid, "shift count not int 64: %s", item)
@@ -966,13 +1065,21 @@ func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.Scrip
 		if err != nil {
 			return errors.Wrapf(ErrScriptInvalid, "stack empty: %s", item)
 		}
-		n1 := decodeInteger(b1)
+
+		n1, err := decodeInteger(b1)
+		if err != nil {
+			return errors.Wrapf(err, "b1: %s", item)
+		}
 
 		b2, err := i.popStack()
 		if err != nil {
 			return errors.Wrapf(ErrScriptInvalid, "stack empty: %s", item)
 		}
-		n2 := decodeInteger(b2)
+
+		n2, err := decodeInteger(b2)
+		if err != nil {
+			return errors.Wrapf(err, "b2: %s", item)
+		}
 
 		if !n2.IsInt64() {
 			return errors.Wrapf(ErrScriptInvalid, "shift count not int 64: %s", item)
@@ -990,13 +1097,21 @@ func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.Scrip
 		if err != nil {
 			return errors.Wrapf(ErrScriptInvalid, "stack empty: %s", item)
 		}
-		n1 := decodeInteger(b1)
+
+		n1, err := decodeInteger(b1)
+		if err != nil {
+			return errors.Wrapf(err, "b1: %s", item)
+		}
 
 		b2, err := i.popStack()
 		if err != nil {
 			return errors.Wrapf(ErrScriptInvalid, "stack empty: %s", item)
 		}
-		n2 := decodeInteger(b2)
+
+		n2, err := decodeInteger(b2)
+		if err != nil {
+			return errors.Wrapf(err, "b2: %s", item)
+		}
 
 		zero := big.NewInt(0)
 		if n1.Cmp(zero) != 0 && n2.Cmp(zero) != 0 {
@@ -1010,13 +1125,21 @@ func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.Scrip
 		if err != nil {
 			return errors.Wrapf(ErrScriptInvalid, "stack empty: %s", item)
 		}
-		n1 := decodeInteger(b1)
+
+		n1, err := decodeInteger(b1)
+		if err != nil {
+			return errors.Wrapf(err, "b1: %s", item)
+		}
 
 		b2, err := i.popStack()
 		if err != nil {
 			return errors.Wrapf(ErrScriptInvalid, "stack empty: %s", item)
 		}
-		n2 := decodeInteger(b2)
+
+		n2, err := decodeInteger(b2)
+		if err != nil {
+			return errors.Wrapf(err, "b2: %s", item)
+		}
 
 		zero := big.NewInt(0)
 		if n1.Cmp(zero) != 0 || n2.Cmp(zero) != 0 {
@@ -1030,13 +1153,21 @@ func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.Scrip
 		if err != nil {
 			return errors.Wrapf(ErrScriptInvalid, "stack empty: %s", item)
 		}
-		n1 := decodeInteger(b1)
+
+		n1, err := decodeInteger(b1)
+		if err != nil {
+			return errors.Wrapf(err, "b1: %s", item)
+		}
 
 		b2, err := i.popStack()
 		if err != nil {
 			return errors.Wrapf(ErrScriptInvalid, "stack empty: %s", item)
 		}
-		n2 := decodeInteger(b2)
+
+		n2, err := decodeInteger(b2)
+		if err != nil {
+			return errors.Wrapf(err, "b2: %s", item)
+		}
 
 		if n1.Cmp(n2) == 0 {
 			i.pushStack(encodePrimitiveInteger(1))
@@ -1049,13 +1180,21 @@ func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.Scrip
 		if err != nil {
 			return errors.Wrapf(ErrScriptInvalid, "stack empty: %s", item)
 		}
-		n1 := decodeInteger(b1)
+
+		n1, err := decodeInteger(b1)
+		if err != nil {
+			return errors.Wrapf(err, "b1: %s", item)
+		}
 
 		b2, err := i.popStack()
 		if err != nil {
 			return errors.Wrapf(ErrScriptInvalid, "stack empty: %s", item)
 		}
-		n2 := decodeInteger(b2)
+
+		n2, err := decodeInteger(b2)
+		if err != nil {
+			return errors.Wrapf(err, "b2: %s", item)
+		}
 
 		if n1.Cmp(n2) != 0 {
 			i.err = errors.Wrapf(ErrVerifyFailed, "op code (%d): %s", itemIndex, item)
@@ -1068,13 +1207,21 @@ func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.Scrip
 		if err != nil {
 			return errors.Wrapf(ErrScriptInvalid, "stack empty: %s", item)
 		}
-		n1 := decodeInteger(b1)
+
+		n1, err := decodeInteger(b1)
+		if err != nil {
+			return errors.Wrapf(err, "b1: %s", item)
+		}
 
 		b2, err := i.popStack()
 		if err != nil {
 			return errors.Wrapf(ErrScriptInvalid, "stack empty: %s", item)
 		}
-		n2 := decodeInteger(b2)
+
+		n2, err := decodeInteger(b2)
+		if err != nil {
+			return errors.Wrapf(err, "b2: %s", item)
+		}
 
 		if n1.Cmp(n2) != 0 {
 			i.pushStack(encodePrimitiveInteger(1))
@@ -1087,13 +1234,21 @@ func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.Scrip
 		if err != nil {
 			return errors.Wrapf(ErrScriptInvalid, "stack empty: %s", item)
 		}
-		n1 := decodeInteger(b1)
+
+		n1, err := decodeInteger(b1)
+		if err != nil {
+			return errors.Wrapf(err, "b1: %s", item)
+		}
 
 		b2, err := i.popStack()
 		if err != nil {
 			return errors.Wrapf(ErrScriptInvalid, "stack empty: %s", item)
 		}
-		n2 := decodeInteger(b2)
+
+		n2, err := decodeInteger(b2)
+		if err != nil {
+			return errors.Wrapf(err, "b2: %s", item)
+		}
 
 		if n1.Cmp(n2) < 0 {
 			i.pushStack(encodeInteger(n1))
@@ -1106,13 +1261,21 @@ func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.Scrip
 		if err != nil {
 			return errors.Wrapf(ErrScriptInvalid, "stack empty: %s", item)
 		}
-		n1 := decodeInteger(b1)
+
+		n1, err := decodeInteger(b1)
+		if err != nil {
+			return errors.Wrapf(err, "b1: %s", item)
+		}
 
 		b2, err := i.popStack()
 		if err != nil {
 			return errors.Wrapf(ErrScriptInvalid, "stack empty: %s", item)
 		}
-		n2 := decodeInteger(b2)
+
+		n2, err := decodeInteger(b2)
+		if err != nil {
+			return errors.Wrapf(err, "b2: %s", item)
+		}
 
 		if n1.Cmp(n2) > 0 {
 			i.pushStack(encodeInteger(n1))
@@ -1125,19 +1288,31 @@ func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.Scrip
 		if err != nil {
 			return errors.Wrapf(ErrScriptInvalid, "stack empty: %s", item)
 		}
-		n1 := decodeInteger(b1)
+
+		n1, err := decodeInteger(b1)
+		if err != nil {
+			return errors.Wrapf(err, "b1: %s", item)
+		}
 
 		b2, err := i.popStack()
 		if err != nil {
 			return errors.Wrapf(ErrScriptInvalid, "stack empty: %s", item)
 		}
-		n2 := decodeInteger(b2)
+
+		n2, err := decodeInteger(b2)
+		if err != nil {
+			return errors.Wrapf(err, "b2: %s", item)
+		}
 
 		b3, err := i.popStack()
 		if err != nil {
 			return errors.Wrapf(ErrScriptInvalid, "stack empty: %s", item)
 		}
-		n3 := decodeInteger(b3)
+
+		n3, err := decodeInteger(b3)
+		if err != nil {
+			return errors.Wrapf(err, "b3: %s", item)
+		}
 
 		if n2.Cmp(n1) <= 0 && n3.Cmp(n1) >= 0 {
 			i.pushStack(encodePrimitiveInteger(1))
@@ -1152,13 +1327,21 @@ func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.Scrip
 		if err != nil {
 			return errors.Wrapf(ErrScriptInvalid, "stack empty: %s", item)
 		}
-		n2 := decodeInteger(b2)
+
+		n2, err := decodeInteger(b2)
+		if err != nil {
+			return errors.Wrapf(err, "b2: %s", item)
+		}
 
 		b1, err := i.popStack()
 		if err != nil {
 			return errors.Wrapf(ErrScriptInvalid, "stack empty: %s", item)
 		}
-		n1 := decodeInteger(b1)
+
+		n1, err := decodeInteger(b1)
+		if err != nil {
+			return errors.Wrapf(err, "b1: %s", item)
+		}
 
 		switch item.OpCode {
 		case bitcoin.OP_LESSTHAN: // second stack item is less than top stack item
@@ -1511,7 +1694,11 @@ func isTrue(b []byte) bool {
 		return false
 	}
 
-	i := decodeInteger(b)
+	i, err := decodeInteger(b)
+	if err != nil {
+		return false
+	}
+
 	return i.Cmp(big.NewInt(0)) != 0
 }
 
@@ -1557,6 +1744,13 @@ func encodeInteger(value *big.Int) []byte {
 		break
 	}
 
+	// l := len(result)
+	// if l > 0 && result[l-1]&0x7f == 0 {
+	// 	if l <= 1 || (result[l-2]&0x80) == 0 {
+	// 		panic(errors.Wrapf(ErrNonMinimallyEncodedNumber, "%x", result))
+	// 	}
+	// }
+
 	return result
 }
 
@@ -1571,32 +1765,46 @@ func reverseEndian(b []byte) []byte {
 	return result
 }
 
-func padNumber(b []byte, size int) []byte {
-	n := decodeInteger(b)
+func padNumber(b []byte, size int) ([]byte, error) {
+	n, err := decodeInteger(b)
+	if err != nil {
+		return nil, err
+	}
 	b = encodeInteger(n)
 
 	l := len(b)
 	if l == 0 {
-		return make([]byte, size)
+		return make([]byte, size), nil
 	}
 
 	if l == size {
-		return b
+		return b, nil
 	}
 
 	result := make([]byte, size)
 	copy(result, b)
 
-	return result
+	return result, nil
 }
 
-func decodeInteger(b []byte) *big.Int {
+func decodeInteger(b []byte) (*big.Int, error) {
+	return decodeIntegerFull(b, true)
+}
 
+func decodeIntegerFull(b []byte, requireMinimal bool) (*big.Int, error) {
 	result := new(big.Int).SetInt64(0)
 	l := len(b)
 	if l == 0 {
-		return result
+		return result, nil
 	}
+
+	// check minimal encoding
+	if requireMinimal && b[l-1]&0x7f == 0 {
+		if l <= 1 || (b[l-2]&0x80) == 0 {
+			return nil, errors.Wrapf(ErrNonMinimallyEncodedNumber, "%x", b)
+		}
+	}
+
 	for i, bt := range b[:l-1] {
 		byt := new(big.Int).SetBytes([]byte{bt})
 		byt.Lsh(byt, uint(i*8))
@@ -1617,7 +1825,7 @@ func decodeInteger(b []byte) *big.Int {
 		result.Neg(result)
 	}
 
-	return result
+	return result, nil
 }
 
 func copyBytes(b []byte) []byte {

@@ -22,8 +22,7 @@ var (
 func CreateScript(sigHashType bitcoin_interpreter.SigHashType) bitcoin.Script {
 	return bitcoin.ConcatScript(
 		Script_CheckSignaturePreimage_Pre,
-		bitcoin.BytePushData(byte(sigHashType)),
-		bitcoin.OP_CAT,
+		bitcoin.BytePushData(byte(sigHashType)), bitcoin.OP_CAT, // append sig hash type
 		bitcoin.PushData(Value_PublicKey),
 		bitcoin.OP_CODESEPARATOR,
 		bitcoin.OP_CHECKSIG,
@@ -63,7 +62,9 @@ func Unlock(ctx context.Context, tx *wire.MsgTx, inputIndex int, lockingScript b
 
 	if err := interpreter.Execute(ctx, checkLockingScript, tx, inputIndex, value,
 		checkHashCache); err != nil {
-		if errors.Cause(err) == bitcoin_interpreter.ErrMalformedSignature {
+		cause := errors.Cause(err)
+		if cause == bitcoin_interpreter.ErrMalformedSignature ||
+			cause == bitcoin_interpreter.ErrNonMinimallyEncodedNumber {
 			// The signature generated in the script has leading zeros so it doesn't encode
 			// correctly. The tx needs to be changed so the signature will generate differently.
 			return nil, errors.Wrap(TxNeedsMalleation, err.Error())

@@ -29,14 +29,23 @@ func Test_CheckPreimageOutputsHashScript_Correct(t *testing.T) {
 
 	t.Logf("Tx : %s", tx)
 
-	var outputBuf bytes.Buffer
-	tx.TxOut[0].Serialize(&outputBuf, 0, 0)
-	outputsHash, _ := bitcoin.NewHash32(bitcoin.DoubleSha256(outputBuf.Bytes()))
-
+	outputsHash := tx.TxOut[0].OutputHash()
 	t.Logf("Output Hash : %x", outputsHash[:])
 
-	lockingScript := CheckPreimageOutputsHashScript(*outputsHash, true)
+	lockingScript := CheckPreimageOutputsHashScript(outputsHash, true)
 	t.Logf("CheckPreimageOutputsHashScript (%d bytes) : %s", len(lockingScript), lockingScript)
+
+	// remove op dup so preimage won't be left on stack
+	if lockingScript[0] != bitcoin.OP_DUP {
+		t.Fatalf("Wrong first op code : %s", lockingScript[:1])
+	}
+	lockingScript = lockingScript[1:]
+
+	// change op equal verify to just op equal so the script will evaluate to true
+	if lockingScript[len(lockingScript)-1] != bitcoin.OP_EQUALVERIFY {
+		t.Fatalf("Wrong last op code : %s", lockingScript[len(lockingScript)-1:])
+	}
+	lockingScript[len(lockingScript)-1] = bitcoin.OP_EQUAL
 
 	hashCache := &bitcoin_interpreter.SigHashCache{}
 	preimage, err := bitcoin_interpreter.SignaturePreimage(tx, inputIndex, lockingScript, 1, value,
@@ -65,6 +74,10 @@ func Test_CheckPreimageOutputsHashScript_Correct(t *testing.T) {
 	if err := interpreter.Execute(ctx, lockingScript, tx, inputIndex, value,
 		hashCache); err != nil {
 		t.Fatalf("Failed to interpret locking script : %s", err)
+	}
+
+	if err := interpreter.Error(); err != nil {
+		t.Fatalf("Failed to interpret scripts : %s", err)
 	}
 
 	stack := interpreter.StackItems()
@@ -105,6 +118,18 @@ func Test_CheckPreimageOutputsHashScript_Wrong(t *testing.T) {
 
 	lockingScript := CheckPreimageOutputsHashScript(*outputsHash, true)
 	t.Logf("CheckPreimageOutputsHashScript (%d bytes) : %s", len(lockingScript), lockingScript)
+
+	// remove op dup so preimage won't be left on stack
+	if lockingScript[0] != bitcoin.OP_DUP {
+		t.Fatalf("Wrong first op code : %s", lockingScript[:1])
+	}
+	lockingScript = lockingScript[1:]
+
+	// change op equal verify to just op equal so the script will evaluate to true
+	if lockingScript[len(lockingScript)-1] != bitcoin.OP_EQUALVERIFY {
+		t.Fatalf("Wrong last op code : %s", lockingScript[len(lockingScript)-1:])
+	}
+	lockingScript[len(lockingScript)-1] = bitcoin.OP_EQUAL
 
 	hashCache := &bitcoin_interpreter.SigHashCache{}
 	preimage, err := bitcoin_interpreter.SignaturePreimage(tx, inputIndex, lockingScript, 1, value,
@@ -166,6 +191,18 @@ func Test_CheckPreimageInputSequenceScript_Correct(t *testing.T) {
 	lockingScript := CheckPreimageInputSequenceScript(wire.MaxTxInSequenceNum, true)
 	t.Logf("CheckPreimageInputSequenceScript (%d bytes) : %s", len(lockingScript), lockingScript)
 
+	// remove op dup so preimage won't be left on stack
+	if lockingScript[0] != bitcoin.OP_DUP {
+		t.Fatalf("Wrong first op code : %s", lockingScript[:1])
+	}
+	lockingScript = lockingScript[1:]
+
+	// change op equal verify to just op equal so the script will evaluate to true
+	if lockingScript[len(lockingScript)-1] != bitcoin.OP_EQUALVERIFY {
+		t.Fatalf("Wrong last op code : %s", lockingScript[len(lockingScript)-1:])
+	}
+	lockingScript[len(lockingScript)-1] = bitcoin.OP_EQUAL
+
 	hashCache := &bitcoin_interpreter.SigHashCache{}
 	preimage, err := bitcoin_interpreter.SignaturePreimage(tx, inputIndex, lockingScript, 1, value,
 		sigHashType, hashCache)
@@ -224,6 +261,18 @@ func Test_CheckPreimageInputSequenceScript_Wrong(t *testing.T) {
 
 	lockingScript := CheckPreimageInputSequenceScript(2, true)
 	t.Logf("CheckPreimageInputSequenceScript (%d bytes) : %s", len(lockingScript), lockingScript)
+
+	// remove op dup so preimage won't be left on stack
+	if lockingScript[0] != bitcoin.OP_DUP {
+		t.Fatalf("Wrong first op code : %s", lockingScript[:1])
+	}
+	lockingScript = lockingScript[1:]
+
+	// change op equal verify to just op equal so the script will evaluate to true
+	if lockingScript[len(lockingScript)-1] != bitcoin.OP_EQUALVERIFY {
+		t.Fatalf("Wrong last op code : %s", lockingScript[len(lockingScript)-1:])
+	}
+	lockingScript[len(lockingScript)-1] = bitcoin.OP_EQUAL
 
 	hashCache := &bitcoin_interpreter.SigHashCache{}
 	preimage, err := bitcoin_interpreter.SignaturePreimage(tx, inputIndex, lockingScript, 1, value,
@@ -319,6 +368,19 @@ func Test_CheckPreimageLockTimeScript(t *testing.T) {
 
 			lockingScript := CheckPreimageLockTimeScript(tt.scriptCheckLockTime, true)
 			t.Logf("CheckPreimageLockTimeScript (%d bytes) : %s", len(lockingScript), lockingScript)
+
+			// remove second op dup so preimage won't be left on stack
+			if lockingScript[18] != bitcoin.OP_DUP {
+				t.Fatalf("Wrong op code where OP_DUP should be : %s", lockingScript[18:19])
+			}
+			lockingScript = append(lockingScript[:18], lockingScript[19:]...)
+
+			// change op equal verify to just op equal so the script will evaluate to true
+			if lockingScript[len(lockingScript)-1] != bitcoin.OP_VERIFY {
+				t.Fatalf("Wrong last op code : %s", lockingScript[len(lockingScript)-1:])
+			}
+			lockingScript = lockingScript[:len(lockingScript)-1]
+			t.Logf("Locking script : %s", lockingScript)
 
 			hashCache := &bitcoin_interpreter.SigHashCache{}
 			preimage, err := bitcoin_interpreter.SignaturePreimage(tx, inputIndex, lockingScript, 1,

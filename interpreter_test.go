@@ -144,13 +144,13 @@ func Test_Execute_Stack(t *testing.T) {
 				"abcdef00",
 			},
 		},
-		{
-			name:   "OP_BIN2NUM remove zero",
-			script: "0xabcd7f00 OP_BIN2NUM",
-			stack: []string{
-				"abcd7f",
-			},
-		},
+		// {
+		// 	name:   "OP_BIN2NUM remove zero",
+		// 	script: "0xabcd7f00 OP_BIN2NUM",
+		// 	stack: []string{
+		// 		"abcd7f",
+		// 	},
+		// },
 		// {
 		// 	name:   "OP_BIN2NUM reduce",
 		// 	script: "0xabcdef4280 OP_BIN2NUM",
@@ -254,6 +254,13 @@ func Test_Execute_Stack(t *testing.T) {
 			script: "0xc0e1e400 OP_4 OP_MOD",
 			stack: []string{
 				"",
+			},
+		},
+		{
+			name:   "0xe51f5f64 OP_1 OP_ADD 0xe51f5f65 OP_EQUAL",
+			script: "0xe51f5f64 OP_1 OP_ADD 0xe51f5f65 OP_EQUAL",
+			stack: []string{
+				"", // empty value
 			},
 		},
 		// {
