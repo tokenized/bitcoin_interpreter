@@ -66,12 +66,12 @@ func Test_CheckPreimageOutputsHashScript_Correct(t *testing.T) {
 	interpreter := bitcoin_interpreter.NewInterpreter()
 
 	hashCache = &bitcoin_interpreter.SigHashCache{}
-	if err := interpreter.Execute(ctx, unlockingScript, tx, inputIndex, value,
+	if err := interpreter.ExecuteTx(ctx, unlockingScript, tx, inputIndex, value,
 		hashCache); err != nil {
 		t.Fatalf("Failed to interpret unlocking script : %s", err)
 	}
 
-	if err := interpreter.Execute(ctx, lockingScript, tx, inputIndex, value,
+	if err := interpreter.ExecuteTx(ctx, lockingScript, tx, inputIndex, value,
 		hashCache); err != nil {
 		t.Fatalf("Failed to interpret locking script : %s", err)
 	}
@@ -150,12 +150,12 @@ func Test_CheckPreimageOutputsHashScript_Wrong(t *testing.T) {
 	interpreter := bitcoin_interpreter.NewInterpreter()
 
 	hashCache = &bitcoin_interpreter.SigHashCache{}
-	if err := interpreter.Execute(ctx, unlockingScript, tx, inputIndex, value,
+	if err := interpreter.ExecuteTx(ctx, unlockingScript, tx, inputIndex, value,
 		hashCache); err != nil {
 		t.Fatalf("Failed to interpret unlocking script : %s", err)
 	}
 
-	if err := interpreter.Execute(ctx, lockingScript, tx, inputIndex, value,
+	if err := interpreter.ExecuteTx(ctx, lockingScript, tx, inputIndex, value,
 		hashCache); err != nil {
 		t.Fatalf("Failed to interpret locking script : %s", err)
 	}
@@ -222,12 +222,12 @@ func Test_CheckPreimageInputSequenceScript_Correct(t *testing.T) {
 	interpreter := bitcoin_interpreter.NewInterpreter()
 
 	hashCache = &bitcoin_interpreter.SigHashCache{}
-	if err := interpreter.Execute(ctx, unlockingScript, tx, inputIndex, value,
+	if err := interpreter.ExecuteTx(ctx, unlockingScript, tx, inputIndex, value,
 		hashCache); err != nil {
 		t.Fatalf("Failed to interpret unlocking script : %s", err)
 	}
 
-	if err := interpreter.Execute(ctx, lockingScript, tx, inputIndex, value,
+	if err := interpreter.ExecuteTx(ctx, lockingScript, tx, inputIndex, value,
 		hashCache); err != nil {
 		t.Fatalf("Failed to interpret locking script : %s", err)
 	}
@@ -293,12 +293,12 @@ func Test_CheckPreimageInputSequenceScript_Wrong(t *testing.T) {
 	interpreter := bitcoin_interpreter.NewInterpreter()
 
 	hashCache = &bitcoin_interpreter.SigHashCache{}
-	if err := interpreter.Execute(ctx, unlockingScript, tx, inputIndex, value,
+	if err := interpreter.ExecuteTx(ctx, unlockingScript, tx, inputIndex, value,
 		hashCache); err != nil {
 		t.Fatalf("Failed to interpret unlocking script : %s", err)
 	}
 
-	if err := interpreter.Execute(ctx, lockingScript, tx, inputIndex, value,
+	if err := interpreter.ExecuteTx(ctx, lockingScript, tx, inputIndex, value,
 		hashCache); err != nil {
 		t.Fatalf("Failed to interpret locking script : %s", err)
 	}
@@ -401,12 +401,12 @@ func Test_CheckPreimageLockTimeScript(t *testing.T) {
 			interpreter := bitcoin_interpreter.NewInterpreter()
 
 			hashCache = &bitcoin_interpreter.SigHashCache{}
-			if err := interpreter.Execute(ctx, unlockingScript, tx, inputIndex, value,
+			if err := interpreter.ExecuteTx(ctx, unlockingScript, tx, inputIndex, value,
 				hashCache); err != nil {
 				t.Fatalf("Failed to interpret unlocking script : %s", err)
 			}
 
-			if err := interpreter.Execute(ctx, lockingScript, tx, inputIndex, value,
+			if err := interpreter.ExecuteTx(ctx, lockingScript, tx, inputIndex, value,
 				hashCache); err != nil {
 				t.Fatalf("Failed to interpret locking script : %s", err)
 			}

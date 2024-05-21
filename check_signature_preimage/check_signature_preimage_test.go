@@ -87,12 +87,12 @@ func Test_CreateScript_Fixed(t *testing.T) {
 	interpreter := bitcoin_interpreter.NewInterpreter()
 
 	hashCache = &bitcoin_interpreter.SigHashCache{}
-	if err := interpreter.Execute(ctx, unlockingScript, tx, inputIndex, value,
+	if err := interpreter.ExecuteTx(ctx, unlockingScript, tx, inputIndex, value,
 		hashCache); err != nil {
 		t.Fatalf("Failed to interpret unlocking script : %s", err)
 	}
 
-	if err := interpreter.Execute(ctx, lockingScript, tx, inputIndex, value,
+	if err := interpreter.ExecuteTx(ctx, lockingScript, tx, inputIndex, value,
 		hashCache); err != nil {
 		t.Fatalf("Failed to interpret locking script : %s", err)
 	}
@@ -272,12 +272,12 @@ func checkSignaturePreimageScript(ctx context.Context, t *testing.T, txHex strin
 	interpreter := bitcoin_interpreter.NewInterpreter()
 
 	hashCache = &bitcoin_interpreter.SigHashCache{}
-	if err := interpreter.Execute(ctx, unlockingScript, tx, inputIndex, value,
+	if err := interpreter.ExecuteTx(ctx, unlockingScript, tx, inputIndex, value,
 		hashCache); err != nil {
 		t.Fatalf("Failed to interpret unlocking script : %s", err)
 	}
 
-	if err := interpreter.Execute(ctx, lockingScript, tx, inputIndex, value,
+	if err := interpreter.ExecuteTx(ctx, lockingScript, tx, inputIndex, value,
 		hashCache); err != nil {
 		t.Fatalf("Failed to interpret locking script : %s", err)
 	}
@@ -357,12 +357,12 @@ func checkSignaturePreimageScript_Random(ctx context.Context, t *testing.T,
 		interpreter := bitcoin_interpreter.NewInterpreter()
 
 		hashCache = &bitcoin_interpreter.SigHashCache{}
-		if err := interpreter.Execute(ctx, unlockingScript, tx, inputIndex, value,
+		if err := interpreter.ExecuteTx(ctx, unlockingScript, tx, inputIndex, value,
 			hashCache); err != nil {
 			t.Fatalf("Failed to interpret unlocking script : %s", err)
 		}
 
-		if err := interpreter.Execute(ctx, lockingScript, tx, inputIndex, value,
+		if err := interpreter.ExecuteTx(ctx, lockingScript, tx, inputIndex, value,
 			hashCache); err != nil {
 			txBuf := &bytes.Buffer{}
 			tx.Serialize(txBuf)
@@ -456,12 +456,13 @@ func check_Script_ComputeS(ctx context.Context, t *testing.T, hash []byte,
 	}
 
 	interpreter := bitcoin_interpreter.NewInterpreter()
+	calcSigHash := bitcoin_interpreter.TxSignatureHashCalculator(nil, 0, 0, nil)
 
-	if err := interpreter.ExecuteFull(ctx, unlockingScript, nil, 0, 0, nil, verbose); err != nil {
+	if err := interpreter.ExecuteFull(ctx, unlockingScript, calcSigHash, verbose); err != nil {
 		t.Fatalf("Failed to interpret unlocking script : %s", err)
 	}
 
-	if err := interpreter.ExecuteFull(ctx, lockingScript, nil, 0, 0, nil, verbose); err != nil {
+	if err := interpreter.ExecuteFull(ctx, lockingScript, calcSigHash, verbose); err != nil {
 		if errors.Cause(err) == bitcoin_interpreter.ErrNonMinimallyEncodedNumber {
 			t.Logf("Needs tx malleation : %s", err)
 			return
@@ -541,11 +542,11 @@ func Test_Script_EncodeFullSignature(t *testing.T) {
 
 			interpreter := bitcoin_interpreter.NewInterpreter()
 
-			if err := interpreter.Execute(ctx, unlockingScript, nil, 0, 0, nil); err != nil {
+			if err := interpreter.ExecuteTx(ctx, unlockingScript, nil, 0, 0, nil); err != nil {
 				t.Fatalf("Failed to interpret unlocking script : %s", err)
 			}
 
-			if err := interpreter.Execute(ctx, lockingScript, nil, 0, 0, nil); err != nil {
+			if err := interpreter.ExecuteTx(ctx, lockingScript, nil, 0, 0, nil); err != nil {
 				t.Fatalf("Failed to interpret locking script : %s", err)
 			}
 

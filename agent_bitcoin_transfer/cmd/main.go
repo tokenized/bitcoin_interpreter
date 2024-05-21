@@ -223,7 +223,7 @@ func CreateAgentOutput(ctx context.Context, config *Config, args []string) error
 			return fmt.Errorf("Failed to create sig hash : %s", err)
 		}
 
-		signature, err := config.Key.Sign(*sigHash)
+		signature, err := config.Key.Sign(sigHash)
 		if err != nil {
 			return fmt.Errorf("Failed to create signature : %s", err)
 		}
@@ -400,7 +400,7 @@ func CompleteAgentTransfer(ctx context.Context, config *Config, args []string) e
 		return fmt.Errorf("Failed to create sig hash : %s", err)
 	}
 
-	signature, err := config.AgentKey.Sign(*sigHash)
+	signature, err := config.AgentKey.Sign(sigHash)
 	if err != nil {
 		return fmt.Errorf("Failed to create signature : %s", err)
 	}
@@ -419,7 +419,7 @@ func CompleteAgentTransfer(ctx context.Context, config *Config, args []string) e
 		return fmt.Errorf("Failed to create sig hash : %s", err)
 	}
 
-	signature, err = config.RecoverKey.Sign(*sigHash)
+	signature, err = config.RecoverKey.Sign(sigHash)
 	if err != nil {
 		return fmt.Errorf("Failed to create signature : %s", err)
 	}
@@ -463,7 +463,7 @@ func CompleteAgentTransfer(ctx context.Context, config *Config, args []string) e
 			return fmt.Errorf("Failed to create sig hash : %s", err)
 		}
 
-		signature, err := config.Key.Sign(*sigHash)
+		signature, err := config.Key.Sign(sigHash)
 		if err != nil {
 			return fmt.Errorf("Failed to create signature : %s", err)
 		}

@@ -258,7 +258,7 @@ func Test_Unlock_Raw(t *testing.T) {
 					t.Fatalf("Failed to create sig hash : %s", err)
 				}
 
-				signature, err := tt.txSigner.Sign(*sigHash)
+				signature, err := tt.txSigner.Sign(sigHash)
 				if err != nil {
 					t.Fatalf("Failed to create agent signature : %s", err)
 				}
@@ -284,7 +284,7 @@ func Test_Unlock_Raw(t *testing.T) {
 					t.Fatalf("Failed to create sig hash : %s", err)
 				}
 
-				signature, err := tt.txSigner.Sign(*sigHash)
+				signature, err := tt.txSigner.Sign(sigHash)
 				if err != nil {
 					t.Fatalf("Failed to create agent signature : %s", err)
 				}
@@ -310,7 +310,7 @@ func Test_Unlock_Raw(t *testing.T) {
 					t.Fatalf("Failed to create sig hash : %s", err)
 				}
 
-				signature, err := tt.txSigner.Sign(*sigHash)
+				signature, err := tt.txSigner.Sign(sigHash)
 				if err != nil {
 					t.Fatalf("Failed to create agent signature : %s", err)
 				}
@@ -338,14 +338,14 @@ func Test_Unlock_Raw(t *testing.T) {
 				interpreter := bitcoin_interpreter.NewInterpreter()
 
 				hashCache = &bitcoin_interpreter.SigHashCache{}
-				if err := interpreter.Execute(ctx, unlockingScript, tx, inputIndex, value,
+				if err := interpreter.ExecuteTx(ctx, unlockingScript, tx, inputIndex, value,
 					hashCache); err != nil {
 					t.Fatalf("Failed to interpret unlocking script : %s", err)
 				}
 
 				t.Logf("Execute locking script")
 
-				if err := interpreter.Execute(ctx, lockingScript, tx, inputIndex, value,
+				if err := interpreter.ExecuteTx(ctx, lockingScript, tx, inputIndex, value,
 					hashCache); err != nil {
 					if errors.Cause(err) == check_signature_preimage.TxNeedsMalleation {
 						continue
@@ -495,7 +495,7 @@ func Test_Fixtures(t *testing.T) {
 
 			t.Logf("Unlocking script")
 			var finalErr error
-			if err := interpreter.Execute(ctx, etx.Tx.TxIn[tt.inputIndex].UnlockingScript, etx.Tx,
+			if err := interpreter.ExecuteTx(ctx, etx.Tx.TxIn[tt.inputIndex].UnlockingScript, etx.Tx,
 				tt.inputIndex, output.Value, hashCache); err != nil {
 				t.Logf("Failed to verify unlocking script : %s", err)
 				finalErr = err
@@ -503,7 +503,7 @@ func Test_Fixtures(t *testing.T) {
 
 			if finalErr == nil {
 				t.Logf("Locking script")
-				if err := interpreter.Execute(ctx, output.LockingScript, etx.Tx, tt.inputIndex,
+				if err := interpreter.ExecuteTx(ctx, output.LockingScript, etx.Tx, tt.inputIndex,
 					output.Value, hashCache); err != nil {
 					t.Logf("Failed to verify locking script : %s", err)
 					finalErr = err
@@ -611,7 +611,7 @@ func check_Random(ctx context.Context, t *testing.T,
 			t.Fatalf("Failed to create sig hash : %s", err)
 		}
 
-		agentSignature, err := agentKey.Sign(*agentSigHash)
+		agentSignature, err := agentKey.Sign(agentSigHash)
 		if err != nil {
 			t.Fatalf("Failed to create agent signature : %s", err)
 		}
@@ -745,12 +745,12 @@ func test_Unlocker(t *testing.T, ctx context.Context, sigHashType bitcoin_interp
 	interpreter := bitcoin_interpreter.NewInterpreter()
 
 	hashCache := &bitcoin_interpreter.SigHashCache{}
-	if err := interpreter.Execute(ctx, unlockingScript, tx, inputIndex, value,
+	if err := interpreter.ExecuteTx(ctx, unlockingScript, tx, inputIndex, value,
 		hashCache); err != nil {
 		t.Fatalf("Failed to interpret unlocking script : %s", err)
 	}
 
-	if err := interpreter.Execute(ctx, lockingScript, tx, inputIndex, value,
+	if err := interpreter.ExecuteTx(ctx, lockingScript, tx, inputIndex, value,
 		hashCache); err != nil {
 		t.Fatalf("Failed to interpret locking script : %s", err)
 	}
@@ -800,12 +800,12 @@ func test_Unlocker(t *testing.T, ctx context.Context, sigHashType bitcoin_interp
 	interpreter = bitcoin_interpreter.NewInterpreter()
 
 	hashCache = &bitcoin_interpreter.SigHashCache{}
-	if err := interpreter.Execute(ctx, unlockingScript, tx, inputIndex, value,
+	if err := interpreter.ExecuteTx(ctx, unlockingScript, tx, inputIndex, value,
 		hashCache); err != nil {
 		t.Fatalf("Failed to interpret unlocking script : %s", err)
 	}
 
-	if err := interpreter.Execute(ctx, lockingScript, tx, inputIndex, value,
+	if err := interpreter.ExecuteTx(ctx, lockingScript, tx, inputIndex, value,
 		hashCache); err != nil {
 		t.Fatalf("Failed to interpret locking script : %s", err)
 	}
@@ -857,12 +857,12 @@ func test_Unlocker(t *testing.T, ctx context.Context, sigHashType bitcoin_interp
 	interpreter = bitcoin_interpreter.NewInterpreter()
 
 	hashCache = &bitcoin_interpreter.SigHashCache{}
-	if err := interpreter.Execute(ctx, unlockingScript, tx, inputIndex, value,
+	if err := interpreter.ExecuteTx(ctx, unlockingScript, tx, inputIndex, value,
 		hashCache); err != nil {
 		t.Fatalf("Failed to interpret unlocking script : %s", err)
 	}
 
-	if err := interpreter.Execute(ctx, lockingScript, tx, inputIndex, value,
+	if err := interpreter.ExecuteTx(ctx, lockingScript, tx, inputIndex, value,
 		hashCache); err != nil {
 		t.Fatalf("Failed to interpret locking script : %s", err)
 	}

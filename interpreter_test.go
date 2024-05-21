@@ -88,12 +88,12 @@ func Test_Execute_Unlock_Hex(t *testing.T) {
 			hashCache := &SigHashCache{}
 			interpreter := NewInterpreter()
 
-			if err := interpreter.Execute(ctx, tx.TxIn[tt.inputIndex].UnlockingScript, tx,
+			if err := interpreter.ExecuteTx(ctx, tx.TxIn[tt.inputIndex].UnlockingScript, tx,
 				tt.inputIndex, tt.inputValue, hashCache); err != nil {
 				t.Errorf("Failed to verify unlocking script : %s", err)
 			}
 
-			if err := interpreter.Execute(ctx, lockingScript, tx, tt.inputIndex, tt.inputValue,
+			if err := interpreter.ExecuteTx(ctx, lockingScript, tx, tt.inputIndex, tt.inputValue,
 				hashCache); err != nil {
 				t.Errorf("Failed to verify locking script : %s", err)
 			}
@@ -288,7 +288,7 @@ func Test_Execute_Stack(t *testing.T) {
 
 			interpreter := NewInterpreter()
 
-			if err := interpreter.Execute(ctx, script, nil, 0, 0, nil); err != nil {
+			if err := interpreter.ExecuteTx(ctx, script, nil, 0, 0, nil); err != nil {
 				t.Errorf("Failed to execute script : %s", err)
 			}
 

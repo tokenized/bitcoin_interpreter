@@ -55,12 +55,12 @@ func Unlock(ctx context.Context, tx *wire.MsgTx, inputIndex int, lockingScript b
 	interpreter := bitcoin_interpreter.NewInterpreter()
 	checkHashCache := &bitcoin_interpreter.SigHashCache{}
 
-	if err := interpreter.Execute(ctx, unlockingScript, tx, inputIndex, value,
+	if err := interpreter.ExecuteTx(ctx, unlockingScript, tx, inputIndex, value,
 		checkHashCache); err != nil {
 		return nil, errors.Wrap(err, "execute unlocking")
 	}
 
-	if err := interpreter.Execute(ctx, checkLockingScript, tx, inputIndex, value,
+	if err := interpreter.ExecuteTx(ctx, checkLockingScript, tx, inputIndex, value,
 		checkHashCache); err != nil {
 		cause := errors.Cause(err)
 		if cause == bitcoin_interpreter.ErrMalformedSignature ||

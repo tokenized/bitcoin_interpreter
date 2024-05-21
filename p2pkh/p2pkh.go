@@ -65,7 +65,7 @@ func Unlock(tx bitcoin_interpreter.TransactionWithOutputs, inputIndex int, locki
 		return nil, errors.Wrap(err, "sig hash")
 	}
 
-	signature, err := key.Sign(*sigHash)
+	signature, err := key.Sign(sigHash)
 	if err != nil {
 		return nil, errors.Wrap(err, "signature")
 	}

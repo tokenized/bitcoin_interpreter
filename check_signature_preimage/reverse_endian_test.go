@@ -50,11 +50,11 @@ func Test_Script_ReverseEndian32(t *testing.T) {
 			interpreter := bitcoin_interpreter.NewInterpreter()
 			hashCache := &bitcoin_interpreter.SigHashCache{}
 
-			if err := interpreter.Execute(ctx, unlockingScript, nil, 0, 0, hashCache); err != nil {
+			if err := interpreter.ExecuteTx(ctx, unlockingScript, nil, 0, 0, hashCache); err != nil {
 				t.Fatalf("Failed to interpret unlocking script : %s", err)
 			}
 
-			if err := interpreter.Execute(ctx, lockingScript, nil, 0, 0, hashCache); err != nil {
+			if err := interpreter.ExecuteTx(ctx, lockingScript, nil, 0, 0, hashCache); err != nil {
 				t.Fatalf("Failed to interpret locking script : %s", err)
 			}
 

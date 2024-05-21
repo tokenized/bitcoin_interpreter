@@ -41,6 +41,26 @@ type ifStackItem struct {
 	elseFound bool
 }
 
+func Verify(ctx context.Context, calcSigHash CalculateSignatureHash,
+	lockingScript, unlockingScript bitcoin.Script) error {
+
+	interpreter := NewInterpreter()
+
+	if err := interpreter.ExecuteFull(ctx, unlockingScript, calcSigHash, false); err != nil {
+		return errors.Wrapf(err, "unlocking script")
+	}
+
+	if err := interpreter.ExecuteFull(ctx, lockingScript, calcSigHash, false); err != nil {
+		return errors.Wrapf(err, "locking script")
+	}
+
+	if !interpreter.IsUnlocked() {
+		return interpreter.Error()
+	}
+
+	return nil
+}
+
 func VerifyTx(ctx context.Context, tx TransactionWithOutputs) error {
 	hashCache := &SigHashCache{}
 	msgTx := tx.GetMsgTx()
@@ -53,12 +73,12 @@ func VerifyTx(ctx context.Context, tx TransactionWithOutputs) error {
 
 		interpreter := NewInterpreter()
 
-		if err := interpreter.Execute(ctx, txin.UnlockingScript, msgTx, inputIndex,
+		if err := interpreter.ExecuteTx(ctx, txin.UnlockingScript, msgTx, inputIndex,
 			inputOutput.Value, hashCache); err != nil {
 			return errors.Wrapf(err, "input %d unlocking script", inputIndex)
 		}
 
-		if err := interpreter.Execute(ctx, inputOutput.LockingScript, msgTx, inputIndex,
+		if err := interpreter.ExecuteTx(ctx, inputOutput.LockingScript, msgTx, inputIndex,
 			inputOutput.Value, hashCache); err != nil {
 			return errors.Wrapf(err, "input %d locking script", inputIndex)
 		}
@@ -75,18 +95,22 @@ func NewInterpreter() *Interpreter {
 	return &Interpreter{}
 }
 
-func (i *Interpreter) Execute(ctx context.Context, script bitcoin.Script, tx *wire.MsgTx,
+func (i *Interpreter) ExecuteTx(ctx context.Context, script bitcoin.Script, tx *wire.MsgTx,
 	inputIndex int, inputValue uint64, hashCache *SigHashCache) error {
-	return i.ExecuteFull(ctx, script, tx, inputIndex, inputValue, hashCache, false)
+
+	calcSigHash := TxSignatureHashCalculator(tx, inputIndex, inputValue, hashCache)
+	return i.ExecuteFull(ctx, script, calcSigHash, false)
 }
 
-func (i *Interpreter) ExecuteVerbose(ctx context.Context, script bitcoin.Script, tx *wire.MsgTx,
-	inputIndex int, inputValue uint64, hashCache *SigHashCache) error {
-	return i.ExecuteFull(ctx, script, tx, inputIndex, inputValue, hashCache, true)
+func (i *Interpreter) ExecuteTxVerbose(ctx context.Context, script bitcoin.Script,
+	tx *wire.MsgTx, inputIndex int, inputValue uint64, hashCache *SigHashCache) error {
+
+	calcSigHash := TxSignatureHashCalculator(tx, inputIndex, inputValue, hashCache)
+	return i.ExecuteFull(ctx, script, calcSigHash, true)
 }
 
-func (i *Interpreter) ExecuteFull(ctx context.Context, script bitcoin.Script, tx *wire.MsgTx,
-	inputIndex int, inputValue uint64, hashCache *SigHashCache, verbose bool) error {
+func (i *Interpreter) ExecuteFull(ctx context.Context, script bitcoin.Script,
+	calcSigHash CalculateSignatureHash, verbose bool) error {
 
 	scriptBuf := bytes.NewReader(script)
 	codeScript := script
@@ -98,8 +122,8 @@ func (i *Interpreter) ExecuteFull(ctx context.Context, script bitcoin.Script, tx
 			return errors.Wrapf(err, "parse item: %d", itemIndex)
 		}
 
-		if err := i.ExecuteOpCodeFull(ctx, item, itemIndex, scriptBuf, &codeScript, tx, inputIndex,
-			inputValue, hashCache, verbose); err != nil {
+		if err := i.ExecuteOpCodeFull(ctx, item, itemIndex, scriptBuf, &codeScript, calcSigHash,
+			verbose); err != nil {
 			return errors.Wrapf(err, "execute item: %d", itemIndex)
 		}
 
@@ -115,22 +139,19 @@ func (i *Interpreter) ExecuteFull(ctx context.Context, script bitcoin.Script, tx
 }
 
 func (i *Interpreter) ExecuteOpCode(ctx context.Context, item *bitcoin.ScriptItem, itemIndex int,
-	scriptBuf *bytes.Reader, codeScript *bitcoin.Script, tx *wire.MsgTx, inputIndex int,
-	inputValue uint64, hashCache *SigHashCache) error {
-	return i.ExecuteOpCodeFull(ctx, item, itemIndex, scriptBuf, codeScript, tx, inputIndex,
-		inputValue, hashCache, false)
+	scriptBuf *bytes.Reader, codeScript *bitcoin.Script, calcSigHash CalculateSignatureHash) error {
+	return i.ExecuteOpCodeFull(ctx, item, itemIndex, scriptBuf, codeScript, calcSigHash, false)
 }
 
 func (i *Interpreter) ExecuteOpCodeVerbose(ctx context.Context, item *bitcoin.ScriptItem,
-	itemIndex int, scriptBuf *bytes.Reader, codeScript *bitcoin.Script, tx *wire.MsgTx,
-	inputIndex int, inputValue uint64, hashCache *SigHashCache) error {
-	return i.ExecuteOpCodeFull(ctx, item, itemIndex, scriptBuf, codeScript, tx, inputIndex,
-		inputValue, hashCache, true)
+	itemIndex int, scriptBuf *bytes.Reader, codeScript *bitcoin.Script,
+	calcSigHash CalculateSignatureHash) error {
+	return i.ExecuteOpCodeFull(ctx, item, itemIndex, scriptBuf, codeScript, calcSigHash, true)
 }
 
 func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.ScriptItem,
-	itemIndex int, scriptBuf *bytes.Reader, codeScript *bitcoin.Script, tx *wire.MsgTx,
-	inputIndex int, inputValue uint64, hashCache *SigHashCache, verbose bool) error {
+	itemIndex int, scriptBuf *bytes.Reader, codeScript *bitcoin.Script,
+	calcSigHash CalculateSignatureHash, verbose bool) error {
 
 	if !i.ifIsExecute() {
 		if verbose {
@@ -1439,13 +1460,12 @@ func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.Scrip
 			return errors.Wrap(ErrMalformedSignature, err.Error())
 		}
 
-		sigHash, err := SignatureHash(tx, inputIndex, *codeScript, -1, inputValue, hashType,
-			hashCache)
+		sigHash, err := calcSigHash(hashType, *codeScript, -1)
 		if err != nil {
 			return errors.Wrapf(ErrScriptInvalid, "calculate sig hash: %s", err)
 		}
 
-		verified := signature.Verify(*sigHash, publicKey)
+		verified := signature.Verify(sigHash, publicKey)
 		if verbose {
 			if verified {
 				logger.Verbose(ctx, "Sig verified")
