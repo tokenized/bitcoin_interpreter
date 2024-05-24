@@ -33,6 +33,7 @@ type Interpreter struct {
 	altStack           [][]byte
 	ifStack            []*ifStackItem
 	scriptVerifyFailed bool // a verify op code found a zero
+	verbose            bool
 	err                error
 }
 
@@ -41,16 +42,16 @@ type ifStackItem struct {
 	elseFound bool
 }
 
-func Verify(ctx context.Context, calcSigHash CalculateSignatureHash,
+func Verify(ctx context.Context, writeSigPreimage WriteSignaturePreimage,
 	lockingScript, unlockingScript bitcoin.Script) error {
 
 	interpreter := NewInterpreter()
 
-	if err := interpreter.ExecuteFull(ctx, unlockingScript, calcSigHash, false); err != nil {
+	if err := interpreter.Execute(ctx, unlockingScript, writeSigPreimage); err != nil {
 		return errors.Wrapf(err, "unlocking script")
 	}
 
-	if err := interpreter.ExecuteFull(ctx, lockingScript, calcSigHash, false); err != nil {
+	if err := interpreter.Execute(ctx, lockingScript, writeSigPreimage); err != nil {
 		return errors.Wrapf(err, "locking script")
 	}
 
@@ -95,22 +96,30 @@ func NewInterpreter() *Interpreter {
 	return &Interpreter{}
 }
 
+func (i *Interpreter) SetVerbose() {
+	i.verbose = true
+}
+
+func (i *Interpreter) ClearVerbose() {
+	i.verbose = false
+}
+
 func (i *Interpreter) ExecuteTx(ctx context.Context, script bitcoin.Script, tx *wire.MsgTx,
 	inputIndex int, inputValue uint64, hashCache *SigHashCache) error {
 
-	calcSigHash := TxSignatureHashCalculator(tx, inputIndex, inputValue, hashCache)
-	return i.ExecuteFull(ctx, script, calcSigHash, false)
+	writeSigPreimage := TxWriteSignaturePreimage(tx, inputIndex, inputValue, hashCache)
+	return i.Execute(ctx, script, writeSigPreimage)
 }
 
 func (i *Interpreter) ExecuteTxVerbose(ctx context.Context, script bitcoin.Script,
 	tx *wire.MsgTx, inputIndex int, inputValue uint64, hashCache *SigHashCache) error {
 
-	calcSigHash := TxSignatureHashCalculator(tx, inputIndex, inputValue, hashCache)
-	return i.ExecuteFull(ctx, script, calcSigHash, true)
+	writeSigPreimage := TxWriteSignaturePreimage(tx, inputIndex, inputValue, hashCache)
+	return i.Execute(ctx, script, writeSigPreimage)
 }
 
-func (i *Interpreter) ExecuteFull(ctx context.Context, script bitcoin.Script,
-	calcSigHash CalculateSignatureHash, verbose bool) error {
+func (i *Interpreter) Execute(ctx context.Context, script bitcoin.Script,
+	writeSigPreimage WriteSignaturePreimage) error {
 
 	scriptBuf := bytes.NewReader(script)
 	codeScript := script
@@ -122,12 +131,12 @@ func (i *Interpreter) ExecuteFull(ctx context.Context, script bitcoin.Script,
 			return errors.Wrapf(err, "parse item: %d", itemIndex)
 		}
 
-		if err := i.ExecuteOpCodeFull(ctx, item, itemIndex, scriptBuf, &codeScript, calcSigHash,
-			verbose); err != nil {
+		if err := i.ExecuteOpCode(ctx, item, itemIndex, scriptBuf, &codeScript,
+			writeSigPreimage); err != nil {
 			return errors.Wrapf(err, "execute item: %d", itemIndex)
 		}
 
-		if verbose {
+		if i.verbose {
 			logger.VerboseWithFields(ctx, []logger.Field{
 				logger.Int("size", len(i.stack)),
 				logger.Strings("stack", i.StackStrings()),
@@ -139,22 +148,11 @@ func (i *Interpreter) ExecuteFull(ctx context.Context, script bitcoin.Script,
 }
 
 func (i *Interpreter) ExecuteOpCode(ctx context.Context, item *bitcoin.ScriptItem, itemIndex int,
-	scriptBuf *bytes.Reader, codeScript *bitcoin.Script, calcSigHash CalculateSignatureHash) error {
-	return i.ExecuteOpCodeFull(ctx, item, itemIndex, scriptBuf, codeScript, calcSigHash, false)
-}
-
-func (i *Interpreter) ExecuteOpCodeVerbose(ctx context.Context, item *bitcoin.ScriptItem,
-	itemIndex int, scriptBuf *bytes.Reader, codeScript *bitcoin.Script,
-	calcSigHash CalculateSignatureHash) error {
-	return i.ExecuteOpCodeFull(ctx, item, itemIndex, scriptBuf, codeScript, calcSigHash, true)
-}
-
-func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.ScriptItem,
-	itemIndex int, scriptBuf *bytes.Reader, codeScript *bitcoin.Script,
-	calcSigHash CalculateSignatureHash, verbose bool) error {
+	scriptBuf *bytes.Reader, codeScript *bitcoin.Script,
+	writeSigPreimage WriteSignaturePreimage) error {
 
 	if !i.ifIsExecute() {
-		if verbose {
+		if i.verbose {
 			logger.VerboseWithFields(ctx, []logger.Field{
 				logger.Int("item_index", itemIndex),
 				logger.Stringer("item", item),
@@ -171,7 +169,7 @@ func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.Scrip
 
 		switch item.OpCode {
 		case bitcoin.OP_IF:
-			if verbose {
+			if i.verbose {
 				logger.VerboseWithFields(ctx, []logger.Field{
 					logger.Int("item_index", itemIndex),
 					logger.Int("if_depth", len(i.ifStack)),
@@ -181,7 +179,7 @@ func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.Scrip
 			i.ifStack = append(i.ifStack, &ifStackItem{})
 
 		case bitcoin.OP_NOTIF:
-			if verbose {
+			if i.verbose {
 				logger.VerboseWithFields(ctx, []logger.Field{
 					logger.Int("item_index", itemIndex),
 					logger.Int("if_depth", len(i.ifStack)),
@@ -196,7 +194,7 @@ func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.Scrip
 				return errors.Wrapf(ErrScriptInvalid, "if stack empty: %s", item)
 			}
 
-			if verbose {
+			if i.verbose {
 				logger.VerboseWithFields(ctx, []logger.Field{
 					logger.Int("item_index", itemIndex),
 					logger.Int("if_depth", len(i.ifStack)),
@@ -219,7 +217,7 @@ func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.Scrip
 				return errors.Wrapf(ErrScriptInvalid, "if stack empty: %s", item)
 			}
 
-			if verbose {
+			if i.verbose {
 				logger.VerboseWithFields(ctx, []logger.Field{
 					logger.Int("item_index", itemIndex),
 					logger.Int("if_depth", len(i.ifStack)),
@@ -232,7 +230,7 @@ func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.Scrip
 		return nil
 	}
 
-	if verbose {
+	if i.verbose {
 		logger.VerboseWithFields(ctx, []logger.Field{
 			logger.Int("item_index", itemIndex),
 			logger.Stringer("item", item),
@@ -304,7 +302,7 @@ func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.Scrip
 		}
 
 		execute := isTrue(b)
-		if verbose {
+		if i.verbose {
 			logger.VerboseWithFields(ctx, []logger.Field{
 				logger.Int("item_index", itemIndex),
 				logger.Int("if_depth", len(i.ifStack)),
@@ -327,7 +325,7 @@ func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.Scrip
 		}
 
 		execute := !isTrue(b)
-		if verbose {
+		if i.verbose {
 			logger.VerboseWithFields(ctx, []logger.Field{
 				logger.Int("item_index", itemIndex),
 				logger.Int("if_depth", len(i.ifStack)),
@@ -351,7 +349,7 @@ func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.Scrip
 		}
 		lastIfItem.elseFound = true
 		lastIfItem.execute = !lastIfItem.execute
-		if verbose {
+		if i.verbose {
 			logger.VerboseWithFields(ctx, []logger.Field{
 				logger.Int("item_index", itemIndex),
 				logger.Int("if_depth", len(i.ifStack)),
@@ -365,7 +363,7 @@ func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.Scrip
 			return errors.Wrapf(ErrScriptInvalid, "if stack empty: %s", item)
 		}
 
-		if verbose {
+		if i.verbose {
 			logger.VerboseWithFields(ctx, []logger.Field{
 				logger.Int("item_index", itemIndex),
 				logger.Int("if_depth", len(i.ifStack)),
@@ -381,7 +379,7 @@ func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.Scrip
 		}
 
 		if !isTrue(b) {
-			if verbose {
+			if i.verbose {
 				logger.VerboseWithFields(ctx, []logger.Field{
 					logger.Int("item_index", itemIndex),
 				}, "Verify failed")
@@ -835,7 +833,7 @@ func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.Scrip
 		}
 
 		if !bytes.Equal(b1, b2) {
-			if verbose {
+			if i.verbose {
 				logger.VerboseWithFields(ctx, []logger.Field{
 					logger.Int("item_index", itemIndex),
 				}, "Verify equal failed")
@@ -1460,13 +1458,13 @@ func (i *Interpreter) ExecuteOpCodeFull(ctx context.Context, item *bitcoin.Scrip
 			return errors.Wrap(ErrMalformedSignature, err.Error())
 		}
 
-		sigHash, err := calcSigHash(hashType, *codeScript, -1)
+		sigHash, err := CalculateSignatureHash(writeSigPreimage, hashType, *codeScript, -1)
 		if err != nil {
 			return errors.Wrapf(ErrScriptInvalid, "calculate sig hash: %s", err)
 		}
 
 		verified := signature.Verify(sigHash, publicKey)
-		if verbose {
+		if i.verbose {
 			if verified {
 				logger.Verbose(ctx, "Sig verified")
 			} else {

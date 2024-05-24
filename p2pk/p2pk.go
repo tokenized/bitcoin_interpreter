@@ -1,4 +1,4 @@
-package p2pkh
+package p2pk
 
 import (
 	"bytes"
@@ -10,17 +10,9 @@ import (
 )
 
 const (
-	LockingSize = 4 + bitcoin.Hash20Size
+	LockingSize = bitcoin_interpreter.PublicKeyPushDataSize + 1
 
-	UnlockingSize = bitcoin_interpreter.MaxSignaturesPushDataSize +
-		bitcoin_interpreter.PublicKeyPushDataSize
-)
-
-var (
-	Script_P2PKH_Pre = bitcoin.ConcatScript(
-		bitcoin.OP_DUP,
-		bitcoin.OP_HASH160,
-	)
+	UnlockingSize = bitcoin_interpreter.MaxSignaturesPushDataSize
 )
 
 func CreateScript(publicKey bitcoin.PublicKey, verify bool) bitcoin.Script {
@@ -30,9 +22,7 @@ func CreateScript(publicKey bitcoin.PublicKey, verify bool) bitcoin.Script {
 	}
 
 	return bitcoin.ConcatScript(
-		Script_P2PKH_Pre,
-		bitcoin.PushData(bitcoin.Hash160(publicKey.Bytes())),
-		bitcoin.OP_EQUALVERIFY,
+		bitcoin.PushData(publicKey.Bytes()),
 		opCheckSig,
 	)
 }
@@ -42,16 +32,13 @@ func Unlock(key bitcoin.Key, writeSigPreimage bitcoin_interpreter.WriteSignature
 	sigHashType bitcoin_interpreter.SigHashType, opCodeSeparatorIndex int,
 	verify bool) (bitcoin.Script, error) {
 
-	scriptHash, err := MatchScript(lockingScript[lockingScriptOffset:], verify)
+	publicKey, err := MatchScript(lockingScript[lockingScriptOffset:], verify)
 	if err != nil && errors.Cause(err) != bitcoin_interpreter.RemainingScript {
 		return nil, err
 	}
 
-	publicKeyBytes := key.PublicKey().Bytes()
-	publicKeyHash := bitcoin.Hash160(publicKeyBytes)
-
-	if !bytes.Equal(scriptHash[:], publicKeyHash) {
-		return nil, errors.Wrap(bitcoin_interpreter.CantUnlock, "wrong public key hash")
+	if !publicKey.Equal(key.PublicKey()) {
+		return nil, errors.Wrap(bitcoin_interpreter.CantUnlock, "wrong public key")
 	}
 
 	sigHash, err := bitcoin_interpreter.CalculateSignatureHash(writeSigPreimage, sigHashType,
@@ -67,35 +54,25 @@ func Unlock(key bitcoin.Key, writeSigPreimage bitcoin_interpreter.WriteSignature
 
 	return bitcoin.ConcatScript(
 		bitcoin.PushData(append(signature.Bytes(), byte(sigHashType))),
-		bitcoin.PushData(publicKeyBytes),
 	), nil
 }
 
-func MatchScript(lockingScript bitcoin.Script, verify bool) (*bitcoin.Hash20, error) {
+func MatchScript(lockingScript bitcoin.Script, verify bool) (*bitcoin.PublicKey, error) {
 	items, err := bitcoin.ParseScriptItems(bytes.NewReader(lockingScript), -1)
 	if err != nil {
 		return nil, errors.Wrap(err, "parse script")
 	}
 
-	items, err = bitcoin_interpreter.MatchScript(items, Script_P2PKH_Pre)
+	var publicKeyBytes []byte
+	items, publicKeyBytes, err = bitcoin_interpreter.MatchNextPushDataSize(items,
+		bitcoin_interpreter.PublicKeyPushDataSize)
 	if err != nil {
-		return nil, errors.Wrap(err, "match pre")
+		return nil, errors.Wrap(err, "match public key")
 	}
 
-	var hash20Bytes []byte
-	items, hash20Bytes, err = bitcoin_interpreter.MatchNextPushDataSize(items, bitcoin.Hash20Size)
+	publicKey, err := bitcoin.PublicKeyFromBytes(publicKeyBytes)
 	if err != nil {
-		return nil, errors.Wrap(err, "match hash")
-	}
-
-	scriptHash, err := bitcoin.NewHash20(hash20Bytes)
-	if err != nil {
-		return nil, errors.Wrap(err, "hash20")
-	}
-
-	items, err = bitcoin_interpreter.MatchNextOpCode(items, bitcoin.OP_EQUALVERIFY)
-	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "public key")
 	}
 
 	if verify {
@@ -111,8 +88,8 @@ func MatchScript(lockingScript bitcoin.Script, verify bool) (*bitcoin.Hash20, er
 	}
 
 	if len(items) != 0 {
-		return scriptHash, bitcoin_interpreter.RemainingScript
+		return &publicKey, bitcoin_interpreter.RemainingScript
 	}
 
-	return scriptHash, nil
+	return &publicKey, nil
 }

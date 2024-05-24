@@ -1,12 +1,12 @@
 package check_signature_preimage
 
 import (
+	"bytes"
 	"context"
 
 	"github.com/tokenized/bitcoin_interpreter"
 	"github.com/tokenized/logger"
 	"github.com/tokenized/pkg/bitcoin"
-	"github.com/tokenized/pkg/wire"
 
 	"github.com/pkg/errors"
 )
@@ -29,15 +29,15 @@ func CreateScript(sigHashType bitcoin_interpreter.SigHashType) bitcoin.Script {
 	)
 }
 
-func Unlock(ctx context.Context, tx *wire.MsgTx, inputIndex int, lockingScript bitcoin.Script,
-	opCodeSeparatorIndex int, value uint64, sigHashType bitcoin_interpreter.SigHashType,
-	hashCache *bitcoin_interpreter.SigHashCache) (bitcoin.Script, error) {
+func Unlock(ctx context.Context, writeSigPreimage bitcoin_interpreter.WriteSignaturePreimage,
+	lockingScript bitcoin.Script, sigHashType bitcoin_interpreter.SigHashType,
+	opCodeSeparatorIndex int) (bitcoin.Script, error) {
 
-	preimage, err := bitcoin_interpreter.SignaturePreimage(tx, inputIndex, lockingScript,
-		opCodeSeparatorIndex, value, sigHashType, hashCache)
-	if err != nil {
+	buf := &bytes.Buffer{}
+	if err := writeSigPreimage(buf, sigHashType, lockingScript, opCodeSeparatorIndex); err != nil {
 		return nil, errors.Wrap(err, "preimage")
 	}
+	preimage := buf.Bytes()
 
 	sigHash := bitcoin.DoubleSha256(preimage)
 	logger.InfoWithFields(ctx, []logger.Field{
@@ -53,15 +53,12 @@ func Unlock(ctx context.Context, tx *wire.MsgTx, inputIndex int, lockingScript b
 	checkLockingScript := CreateScript(sigHashType)
 
 	interpreter := bitcoin_interpreter.NewInterpreter()
-	checkHashCache := &bitcoin_interpreter.SigHashCache{}
 
-	if err := interpreter.ExecuteTx(ctx, unlockingScript, tx, inputIndex, value,
-		checkHashCache); err != nil {
+	if err := interpreter.Execute(ctx, unlockingScript, writeSigPreimage); err != nil {
 		return nil, errors.Wrap(err, "execute unlocking")
 	}
 
-	if err := interpreter.ExecuteTx(ctx, checkLockingScript, tx, inputIndex, value,
-		checkHashCache); err != nil {
+	if err := interpreter.Execute(ctx, checkLockingScript, writeSigPreimage); err != nil {
 		cause := errors.Cause(err)
 		if cause == bitcoin_interpreter.ErrMalformedSignature ||
 			cause == bitcoin_interpreter.ErrNonMinimallyEncodedNumber {

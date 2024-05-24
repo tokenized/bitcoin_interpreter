@@ -1,7 +1,6 @@
-package p2pkh
+package p2pk
 
 import (
-	"bytes"
 	"context"
 
 	"github.com/tokenized/bitcoin_interpreter"
@@ -48,13 +47,12 @@ func (u *Unlocker) SubUnlock(ctx context.Context,
 }
 
 func (u *Unlocker) UnlockingSize(lockingScript bitcoin.Script) (int, error) {
-	scriptHash, err := MatchScript(lockingScript, u.Verify)
+	publicKey, err := MatchScript(lockingScript, u.Verify)
 	if err != nil {
 		return 0, bitcoin_interpreter.ScriptNotMatching
 	}
 
-	keyHash := bitcoin.Hash160(u.Key.PublicKey().Bytes())
-	if !bytes.Equal(scriptHash[:], keyHash) {
+	if !publicKey.Equal(u.Key.PublicKey()) {
 		return 0, bitcoin_interpreter.ScriptNotMatching
 	}
 
@@ -62,13 +60,12 @@ func (u *Unlocker) UnlockingSize(lockingScript bitcoin.Script) (int, error) {
 }
 
 func (u *Unlocker) CanUnlock(lockingScript bitcoin.Script) bool {
-	scriptHash, err := MatchScript(lockingScript, u.Verify)
+	publicKey, err := MatchScript(lockingScript, u.Verify)
 	if err != nil {
 		return false
 	}
 
-	keyHash := bitcoin.Hash160(u.Key.PublicKey().Bytes())
-	return bytes.Equal(scriptHash[:], keyHash)
+	return publicKey.Equal(u.Key.PublicKey())
 }
 
 func (u *Unlocker) CanPartiallyUnlock(lockingScript bitcoin.Script) bool {

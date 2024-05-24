@@ -17,8 +17,10 @@ import (
 // SigHashType represents hash type bits at the end of a signature.
 type SigHashType uint32
 
-type CalculateSignatureHash func(hashType SigHashType, codeScript bitcoin.Script,
-	opCodeSeparatorIndex int) (bitcoin.Hash32, error)
+// WriteSignaturePreimage writes the signature preimage to the io.Writer interface. This is called
+// from within the interpreter when it needs to calculate a signature hash for OP_CHECKSIG.
+type WriteSignaturePreimage func(w io.Writer, hashType SigHashType, codeScript bitcoin.Script,
+	opCodeSeparatorIndex int) error
 
 const (
 	// BasePreimageSize is the size of the preimage not including the code script since that is
@@ -204,13 +206,39 @@ func (shc *SigHashCache) HashOutputs(tx *wire.MsgTx) []byte {
 	return shc.hashOutputs
 }
 
-func TxSignatureHashCalculator(tx *wire.MsgTx, inputIndex int, inputValue uint64,
-	hashCache *SigHashCache) CalculateSignatureHash {
+func CalculateSignatureHash(writeSigPreimage WriteSignaturePreimage, sigHashType SigHashType,
+	codeScript bitcoin.Script, opCodeSeparatorIndex int) (bitcoin.Hash32, error) {
 
-	return func(hashType SigHashType, codeScript bitcoin.Script,
-		opCodeSeparatorIndex int) (bitcoin.Hash32, error) {
-		return SignatureHash(tx, inputIndex, codeScript, opCodeSeparatorIndex, inputValue, hashType,
-			hashCache)
+	hasher := sha256.New()
+	if err := writeSigPreimage(hasher, sigHashType, codeScript, opCodeSeparatorIndex); err != nil {
+		return bitcoin.Hash32{}, errors.Wrap(err, "write preimage")
+	}
+
+	return bitcoin.Hash32(sha256.Sum256(hasher.Sum(nil))), nil
+}
+
+// TxWriteSignaturePreimage creates a WriteSignaturePreimage function from a transaction.
+func TxWriteSignaturePreimage(tx *wire.MsgTx, inputIndex int, inputValue uint64,
+	hashCache *SigHashCache) WriteSignaturePreimage {
+
+	return func(w io.Writer, sigHashType SigHashType, codeScript bitcoin.Script,
+		opCodeSeparatorIndex int) error {
+
+		if sigHashType.HasSingle() && inputIndex >= len(tx.TxOut) {
+			return errors.New("SigHashSingle: Missing output for input index")
+		}
+
+		codeScript, err := afterOpCodeSeparator(codeScript, opCodeSeparatorIndex)
+		if err != nil {
+			return errors.Wrap(err, "after code separator")
+		}
+
+		if err := writeTxSignatureHashPreimage(w, tx, inputIndex, codeScript, inputValue,
+			sigHashType, hashCache); err != nil {
+			return errors.Wrap(err, "write sig hash bytes")
+		}
+
+		return nil
 	}
 }
 
@@ -243,7 +271,7 @@ func SignatureHash(tx *wire.MsgTx, index int, lockingScript bitcoin.Script,
 
 	s := sha256.New()
 
-	if err := writeSignatureHashPreimageBytes(s, tx, index, codeScript, value, hashType,
+	if err := writeTxSignatureHashPreimage(s, tx, index, codeScript, value, hashType,
 		hashCache); err != nil {
 		return bitcoin.Hash32{}, errors.Wrap(err, "write sig hash bytes")
 	}
@@ -266,7 +294,7 @@ func SignaturePreimage(tx *wire.MsgTx, index int, lockingScript bitcoin.Script,
 	}
 
 	buf := &bytes.Buffer{}
-	if err := writeSignatureHashPreimageBytes(buf, tx, index, codeScript, value, hashType,
+	if err := writeTxSignatureHashPreimage(buf, tx, index, codeScript, value, hashType,
 		hashCache); err != nil {
 		return nil, errors.Wrap(err, "write sig hash bytes")
 	}
@@ -274,7 +302,7 @@ func SignaturePreimage(tx *wire.MsgTx, index int, lockingScript bitcoin.Script,
 	return buf.Bytes(), nil
 }
 
-func writeSignatureHashPreimageBytes(w io.Writer, tx *wire.MsgTx, index int,
+func writeTxSignatureHashPreimage(w io.Writer, tx *wire.MsgTx, index int,
 	codeScript bitcoin.Script, value uint64, hashType SigHashType, hashCache *SigHashCache) error {
 
 	// As a sanity check, ensure the passed input index for the transaction is valid.

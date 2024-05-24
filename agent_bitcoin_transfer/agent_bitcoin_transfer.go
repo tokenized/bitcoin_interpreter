@@ -127,14 +127,14 @@ func CreateScriptFromOutputHashes(agentLockingScript bitcoin.Script,
 
 // Check returns the TxNeedsMalleation error if the current tx will need malleation to unlock the
 // provided locking script.
-func Check(ctx context.Context, tx *wire.MsgTx, inputIndex int, inputLockingScript bitcoin.Script,
-	value uint64, hashCache *bitcoin_interpreter.SigHashCache) error {
+func Check(ctx context.Context, writeSigPreimage bitcoin_interpreter.WriteSignaturePreimage,
+	lockingScript bitcoin.Script) error {
 
 	// This will return that the script isn't unlocked because we are just checking the
 	// "check preimage" function, so we need to ignore other errors.
 	sigHashType := bitcoin_interpreter.SigHashForkID | bitcoin_interpreter.SigHashSingle
-	if _, err := check_signature_preimage.Unlock(ctx, tx, inputIndex, inputLockingScript,
-		OpCodeSeparatorIndex, value, sigHashType, hashCache); err != nil {
+	if _, err := check_signature_preimage.Unlock(ctx, writeSigPreimage, lockingScript, sigHashType,
+		OpCodeSeparatorIndex); err != nil {
 		if errors.Cause(err) == check_signature_preimage.TxNeedsMalleation {
 			return err
 		}
@@ -143,17 +143,16 @@ func Check(ctx context.Context, tx *wire.MsgTx, inputIndex int, inputLockingScri
 	return nil
 }
 
-func UnlockApprove(ctx context.Context, tx *wire.MsgTx, inputIndex int, inputValue uint64,
-	inputLockingScript bitcoin.Script,
+func UnlockApprove(ctx context.Context,
+	writeSigPreimage bitcoin_interpreter.WriteSignaturePreimage, lockingScript bitcoin.Script,
 	agentUnlockingScript bitcoin.Script) (bitcoin.Script, error) {
 
 	// Use single sig hash type so that only the corresponding output's hash is checked against the
 	// approve or refund output hashes.
 	sigHashType := bitcoin_interpreter.SigHashForkID | bitcoin_interpreter.SigHashSingle
-	hashCache := &bitcoin_interpreter.SigHashCache{}
 
-	preimageUnlockingScript, err := check_signature_preimage.Unlock(ctx, tx, inputIndex,
-		inputLockingScript, OpCodeSeparatorIndex, inputValue, sigHashType, hashCache)
+	preimageUnlockingScript, err := check_signature_preimage.Unlock(ctx, writeSigPreimage,
+		lockingScript, sigHashType, OpCodeSeparatorIndex)
 	if err != nil {
 		return nil, errors.Wrap(err, "preimage")
 	}
@@ -167,17 +166,16 @@ func UnlockApprove(ctx context.Context, tx *wire.MsgTx, inputIndex int, inputVal
 	), nil
 }
 
-func UnlockRefund(ctx context.Context, tx *wire.MsgTx, inputIndex int, inputValue uint64,
-	inputLockingScript bitcoin.Script,
+func UnlockRefund(ctx context.Context,
+	writeSigPreimage bitcoin_interpreter.WriteSignaturePreimage, lockingScript bitcoin.Script,
 	agentUnlockingScript bitcoin.Script) (bitcoin.Script, error) {
 
 	// Use single sig hash type so that only the corresponding output's hash is checked against the
 	// approve or refund output hashes.
 	sigHashType := bitcoin_interpreter.SigHashForkID | bitcoin_interpreter.SigHashSingle
-	hashCache := &bitcoin_interpreter.SigHashCache{}
 
-	preimageUnlockingScript, err := check_signature_preimage.Unlock(ctx, tx, inputIndex,
-		inputLockingScript, OpCodeSeparatorIndex, inputValue, sigHashType, hashCache)
+	preimageUnlockingScript, err := check_signature_preimage.Unlock(ctx, writeSigPreimage,
+		lockingScript, sigHashType, OpCodeSeparatorIndex)
 	if err != nil {
 		return nil, errors.Wrap(err, "preimage")
 	}
@@ -191,17 +189,16 @@ func UnlockRefund(ctx context.Context, tx *wire.MsgTx, inputIndex int, inputValu
 	), nil
 }
 
-func UnlockRecover(ctx context.Context, tx *wire.MsgTx, inputIndex int, inputValue uint64,
-	inputLockingScript bitcoin.Script,
+func UnlockRecover(ctx context.Context,
+	writeSigPreimage bitcoin_interpreter.WriteSignaturePreimage, lockingScript bitcoin.Script,
 	recoverUnlockingScript bitcoin.Script) (bitcoin.Script, error) {
 
 	// Use single sig hash type so that only the corresponding output's hash is checked against the
 	// approve or refund output hashes.
 	sigHashType := bitcoin_interpreter.SigHashForkID | bitcoin_interpreter.SigHashSingle
-	hashCache := &bitcoin_interpreter.SigHashCache{}
 
-	preimageUnlockingScript, err := check_signature_preimage.Unlock(ctx, tx, inputIndex,
-		inputLockingScript, OpCodeSeparatorIndex, inputValue, sigHashType, hashCache)
+	preimageUnlockingScript, err := check_signature_preimage.Unlock(ctx, writeSigPreimage,
+		lockingScript, sigHashType, OpCodeSeparatorIndex)
 	if err != nil {
 		return nil, errors.Wrap(err, "preimage")
 	}

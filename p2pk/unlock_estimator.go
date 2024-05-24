@@ -1,4 +1,4 @@
-package p2pkh
+package p2pk
 
 import (
 	"context"
@@ -7,7 +7,7 @@ import (
 	"github.com/tokenized/pkg/bitcoin"
 )
 
-// UnlockEstimator can't actually unlock anything, but it can estimate the size of P2PKH unlocking
+// UnlockEstimator can't actually unlock anything, but it can estimate the size of P2PK unlocking
 // scripts.
 type UnlockEstimator struct{}
 

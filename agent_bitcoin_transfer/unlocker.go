@@ -21,28 +21,23 @@ func NewAgentApproveUnlocker(agentUnlocker bitcoin_interpreter.Unlocker) *AgentA
 }
 
 func (u *AgentApproveUnlocker) Unlock(ctx context.Context,
-	tx bitcoin_interpreter.TransactionWithOutputs, inputIndex int) (bitcoin.Script, error) {
+	writeSigPreimage bitcoin_interpreter.WriteSignaturePreimage,
+	lockingScript bitcoin.Script) (bitcoin.Script, error) {
 
-	return u.SubUnlock(ctx, tx, inputIndex, 0)
+	return u.SubUnlock(ctx, writeSigPreimage, lockingScript, 0)
 }
 
 func (u *AgentApproveUnlocker) SubUnlock(ctx context.Context,
-	tx bitcoin_interpreter.TransactionWithOutputs, inputIndex int,
+	writeSigPreimage bitcoin_interpreter.WriteSignaturePreimage, lockingScript bitcoin.Script,
 	lockingScriptOffset int) (bitcoin.Script, error) {
 
-	msgTx := tx.GetMsgTx()
-	txout, err := tx.InputOutput(inputIndex)
-	if err != nil {
-		return nil, errors.Wrap(err, "input output")
-	}
-
-	agentUnlockingScript, err := u.AgentUnlocker.SubUnlock(ctx, tx, inputIndex,
+	agentUnlockingScript, err := u.AgentUnlocker.SubUnlock(ctx, writeSigPreimage, lockingScript,
 		lockingScriptOffset+1)
 	if err != nil {
 		return nil, errors.Wrap(err, "agent")
 	}
 
-	unlockingScript, err := UnlockApprove(ctx, msgTx, inputIndex, txout.Value, txout.LockingScript,
+	unlockingScript, err := UnlockApprove(ctx, writeSigPreimage, lockingScript,
 		agentUnlockingScript)
 	if err != nil {
 		return nil, errors.Wrap(err, "approve")
@@ -98,29 +93,23 @@ func NewAgentRefundUnlocker(agentUnlocker bitcoin_interpreter.Unlocker) *AgentRe
 }
 
 func (u *AgentRefundUnlocker) Unlock(ctx context.Context,
-	tx bitcoin_interpreter.TransactionWithOutputs, inputIndex int) (bitcoin.Script, error) {
+	writeSigPreimage bitcoin_interpreter.WriteSignaturePreimage,
+	lockingScript bitcoin.Script) (bitcoin.Script, error) {
 
-	return u.SubUnlock(ctx, tx, inputIndex, 0)
+	return u.SubUnlock(ctx, writeSigPreimage, lockingScript, 0)
 }
 
 func (u *AgentRefundUnlocker) SubUnlock(ctx context.Context,
-	tx bitcoin_interpreter.TransactionWithOutputs, inputIndex int,
+	writeSigPreimage bitcoin_interpreter.WriteSignaturePreimage, lockingScript bitcoin.Script,
 	lockingScriptOffset int) (bitcoin.Script, error) {
 
-	msgTx := tx.GetMsgTx()
-	txout, err := tx.InputOutput(inputIndex)
-	if err != nil {
-		return nil, errors.Wrap(err, "input output")
-	}
-
-	agentUnlockingScript, err := u.AgentUnlocker.SubUnlock(ctx, tx, inputIndex,
+	agentUnlockingScript, err := u.AgentUnlocker.SubUnlock(ctx, writeSigPreimage, lockingScript,
 		lockingScriptOffset+1)
 	if err != nil {
 		return nil, errors.Wrap(err, "agent")
 	}
 
-	unlockingScript, err := UnlockRefund(ctx, msgTx, inputIndex, txout.Value, txout.LockingScript,
-		agentUnlockingScript)
+	unlockingScript, err := UnlockRefund(ctx, writeSigPreimage, lockingScript, agentUnlockingScript)
 	if err != nil {
 		return nil, errors.Wrap(err, "refund")
 	}
@@ -175,34 +164,28 @@ func NewRecoverUnlocker(subUnlocker bitcoin_interpreter.Unlocker) *RecoverUnlock
 }
 
 func (u *RecoverUnlocker) Unlock(ctx context.Context,
-	tx bitcoin_interpreter.TransactionWithOutputs, inputIndex int) (bitcoin.Script, error) {
+	writeSigPreimage bitcoin_interpreter.WriteSignaturePreimage,
+	lockingScript bitcoin.Script) (bitcoin.Script, error) {
 
-	return u.SubUnlock(ctx, tx, inputIndex, 0)
+	return u.SubUnlock(ctx, writeSigPreimage, lockingScript, 0)
 }
 
 func (u *RecoverUnlocker) SubUnlock(ctx context.Context,
-	tx bitcoin_interpreter.TransactionWithOutputs, inputIndex int,
+	writeSigPreimage bitcoin_interpreter.WriteSignaturePreimage, lockingScript bitcoin.Script,
 	lockingScriptOffset int) (bitcoin.Script, error) {
 
-	msgTx := tx.GetMsgTx()
-	txout, err := tx.InputOutput(inputIndex)
-	if err != nil {
-		return nil, errors.Wrap(err, "input output")
-	}
-
-	info, err := MatchScript(txout.LockingScript)
+	info, err := MatchScript(lockingScript)
 	if err != nil {
 		return nil, errors.Wrap(err, "match")
 	}
 
-	subUnlockingScript, err := u.SubUnlocker.SubUnlock(ctx, tx, inputIndex, lockingScriptOffset+
-		len(info.AgentLockingScript)+RecoverLockingScriptOffset)
+	subUnlockingScript, err := u.SubUnlocker.SubUnlock(ctx, writeSigPreimage, lockingScript,
+		lockingScriptOffset+len(info.AgentLockingScript)+RecoverLockingScriptOffset)
 	if err != nil {
 		return nil, errors.Wrap(err, "sub")
 	}
 
-	unlockingScript, err := UnlockRecover(ctx, msgTx, inputIndex, txout.Value, txout.LockingScript,
-		subUnlockingScript)
+	unlockingScript, err := UnlockRecover(ctx, writeSigPreimage, lockingScript, subUnlockingScript)
 	if err != nil {
 		return nil, errors.Wrap(err, "recover")
 	}

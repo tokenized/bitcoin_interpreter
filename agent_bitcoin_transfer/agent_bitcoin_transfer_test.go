@@ -23,6 +23,13 @@ import (
 
 // Test_Unlock_Raw tests unlocking a generated script with correct and incorrect values.
 func Test_Unlock_Raw(t *testing.T) {
+	// Run these tests a lot of times to ensure we hit tx malleation issues.
+	for i := 0; i < 100; i++ {
+		test_Unlock_Raw(t)
+	}
+}
+
+func test_Unlock_Raw(t *testing.T) {
 	ctx := logger.ContextWithLogger(context.Background(), true, false, "")
 	sigHashType := bitcoin_interpreter.SigHashForkID | bitcoin_interpreter.SigHashSingle
 	value := uint64(1000)
@@ -240,6 +247,8 @@ func Test_Unlock_Raw(t *testing.T) {
 			t.Logf("Tx : %s", tx)
 
 			hashCache := &bitcoin_interpreter.SigHashCache{}
+			writeSigPreimage := bitcoin_interpreter.TxWriteSignaturePreimage(tx, inputIndex, value,
+				hashCache)
 			preimage, err := bitcoin_interpreter.SignaturePreimage(tx, inputIndex, lockingScript,
 				-1, value, sigHashType, hashCache)
 			if err != nil {
@@ -250,81 +259,108 @@ func Test_Unlock_Raw(t *testing.T) {
 			var unlockingScript bitcoin.Script
 			switch tt.branch {
 			case 0: // agent approve
-				hashCache = &bitcoin_interpreter.SigHashCache{}
-				sigHash, err := bitcoin_interpreter.SignatureHash(tx, inputIndex, lockingScript, -1,
-					value, bitcoin_interpreter.SigHashForkID|bitcoin_interpreter.SigHashAll,
-					hashCache)
-				if err != nil {
-					t.Fatalf("Failed to create sig hash : %s", err)
-				}
+				for i := 0; i < 5; i++ {
+					sigHash, err := bitcoin_interpreter.SignatureHash(tx, inputIndex, lockingScript,
+						-1, value, bitcoin_interpreter.SigHashForkID|bitcoin_interpreter.SigHashAll,
+						hashCache)
+					if err != nil {
+						t.Fatalf("Failed to create sig hash : %s", err)
+					}
 
-				signature, err := tt.txSigner.Sign(sigHash)
-				if err != nil {
-					t.Fatalf("Failed to create agent signature : %s", err)
-				}
+					signature, err := tt.txSigner.Sign(sigHash)
+					if err != nil {
+						t.Fatalf("Failed to create agent signature : %s", err)
+					}
 
-				agentUnlockingScript := bitcoin.ConcatScript(
-					bitcoin.PushData(append(signature.Bytes(),
-						byte(bitcoin_interpreter.SigHashForkID|bitcoin_interpreter.SigHashAll))),
-					bitcoin.PushData(tt.txSigner.PublicKey().Bytes()),
-				)
+					agentUnlockingScript := bitcoin.ConcatScript(
+						bitcoin.PushData(append(signature.Bytes(),
+							byte(bitcoin_interpreter.SigHashForkID|bitcoin_interpreter.SigHashAll))),
+						bitcoin.PushData(tt.txSigner.PublicKey().Bytes()),
+					)
 
-				unlockingScript, err = UnlockApprove(ctx, tx, inputIndex, value,
-					lockingScript, agentUnlockingScript)
-				if err != nil {
-					t.Fatalf("Failed to create unlocking script : %s", err)
+					unlockingScript, err = UnlockApprove(ctx, writeSigPreimage, lockingScript,
+						agentUnlockingScript)
+					if err != nil {
+						if errors.Cause(err) == check_signature_preimage.TxNeedsMalleation {
+							hashCache.Clear()
+							tx.LockTime++
+							t.Logf("Malleated tx")
+							continue
+						}
+						t.Fatalf("Failed to create unlocking script : %s", err)
+					}
+
+					break
 				}
 
 			case 1: // agent refund
-				hashCache = &bitcoin_interpreter.SigHashCache{}
-				sigHash, err := bitcoin_interpreter.SignatureHash(tx, inputIndex, lockingScript, -1,
-					value, bitcoin_interpreter.SigHashForkID|bitcoin_interpreter.SigHashAll,
-					hashCache)
-				if err != nil {
-					t.Fatalf("Failed to create sig hash : %s", err)
-				}
+				for i := 0; i < 5; i++ {
+					sigHash, err := bitcoin_interpreter.SignatureHash(tx, inputIndex, lockingScript,
+						-1, value, bitcoin_interpreter.SigHashForkID|bitcoin_interpreter.SigHashAll,
+						hashCache)
+					if err != nil {
+						t.Fatalf("Failed to create sig hash : %s", err)
+					}
 
-				signature, err := tt.txSigner.Sign(sigHash)
-				if err != nil {
-					t.Fatalf("Failed to create agent signature : %s", err)
-				}
+					signature, err := tt.txSigner.Sign(sigHash)
+					if err != nil {
+						t.Fatalf("Failed to create agent signature : %s", err)
+					}
 
-				agentUnlockingScript := bitcoin.ConcatScript(
-					bitcoin.PushData(append(signature.Bytes(),
-						byte(bitcoin_interpreter.SigHashForkID|bitcoin_interpreter.SigHashAll))),
-					bitcoin.PushData(tt.txSigner.PublicKey().Bytes()),
-				)
+					agentUnlockingScript := bitcoin.ConcatScript(
+						bitcoin.PushData(append(signature.Bytes(),
+							byte(bitcoin_interpreter.SigHashForkID|bitcoin_interpreter.SigHashAll))),
+						bitcoin.PushData(tt.txSigner.PublicKey().Bytes()),
+					)
 
-				unlockingScript, err = UnlockRefund(ctx, tx, inputIndex, value,
-					lockingScript, agentUnlockingScript)
-				if err != nil {
-					t.Fatalf("Failed to create unlocking script : %s", err)
+					unlockingScript, err = UnlockRefund(ctx, writeSigPreimage, lockingScript,
+						agentUnlockingScript)
+					if err != nil {
+						if errors.Cause(err) == check_signature_preimage.TxNeedsMalleation {
+							hashCache.Clear()
+							tx.LockTime++
+							t.Logf("Malleated tx")
+							continue
+						}
+						t.Fatalf("Failed to create unlocking script : %s", err)
+					}
+
+					break
 				}
 
 			case 2: // recover
-				hashCache = &bitcoin_interpreter.SigHashCache{}
-				sigHash, err := bitcoin_interpreter.SignatureHash(tx, inputIndex, lockingScript, -1,
-					value, bitcoin_interpreter.SigHashForkID|bitcoin_interpreter.SigHashAll,
-					hashCache)
-				if err != nil {
-					t.Fatalf("Failed to create sig hash : %s", err)
-				}
+				for i := 0; i < 5; i++ {
+					sigHash, err := bitcoin_interpreter.SignatureHash(tx, inputIndex, lockingScript,
+						-1, value, bitcoin_interpreter.SigHashForkID|bitcoin_interpreter.SigHashAll,
+						hashCache)
+					if err != nil {
+						t.Fatalf("Failed to create sig hash : %s", err)
+					}
 
-				signature, err := tt.txSigner.Sign(sigHash)
-				if err != nil {
-					t.Fatalf("Failed to create agent signature : %s", err)
-				}
+					signature, err := tt.txSigner.Sign(sigHash)
+					if err != nil {
+						t.Fatalf("Failed to create agent signature : %s", err)
+					}
 
-				recoverUnlockingScript := bitcoin.ConcatScript(
-					bitcoin.PushData(append(signature.Bytes(),
-						byte(bitcoin_interpreter.SigHashForkID|bitcoin_interpreter.SigHashAll))),
-					bitcoin.PushData(tt.txSigner.PublicKey().Bytes()),
-				)
+					recoverUnlockingScript := bitcoin.ConcatScript(
+						bitcoin.PushData(append(signature.Bytes(),
+							byte(bitcoin_interpreter.SigHashForkID|bitcoin_interpreter.SigHashAll))),
+						bitcoin.PushData(tt.txSigner.PublicKey().Bytes()),
+					)
 
-				unlockingScript, err = UnlockRecover(ctx, tx, inputIndex, value,
-					lockingScript, recoverUnlockingScript)
-				if err != nil {
-					t.Fatalf("Failed to create unlocking script : %s", err)
+					unlockingScript, err = UnlockRecover(ctx, writeSigPreimage, lockingScript,
+						recoverUnlockingScript)
+					if err != nil {
+						if errors.Cause(err) == check_signature_preimage.TxNeedsMalleation {
+							hashCache.Clear()
+							tx.TxOut[len(tx.TxOut)-1].Value--
+							t.Logf("Malleated tx")
+							continue
+						}
+						t.Fatalf("Failed to create unlocking script : %s", err)
+					}
+
+					break
 				}
 
 			default:
@@ -333,45 +369,31 @@ func Test_Unlock_Raw(t *testing.T) {
 
 			t.Logf("Unlocking Script (%d bytes) : %s", len(unlockingScript), unlockingScript)
 
-			success := false
-			for i := 0; i < 5; i++ {
-				interpreter := bitcoin_interpreter.NewInterpreter()
+			interpreter := bitcoin_interpreter.NewInterpreter()
 
-				hashCache = &bitcoin_interpreter.SigHashCache{}
-				if err := interpreter.ExecuteTx(ctx, unlockingScript, tx, inputIndex, value,
-					hashCache); err != nil {
-					t.Fatalf("Failed to interpret unlocking script : %s", err)
-				}
-
-				t.Logf("Execute locking script")
-
-				if err := interpreter.ExecuteTx(ctx, lockingScript, tx, inputIndex, value,
-					hashCache); err != nil {
-					if errors.Cause(err) == check_signature_preimage.TxNeedsMalleation {
-						continue
-					}
-					t.Fatalf("Failed to interpret locking script : %s", err)
-				}
-				success = true
-
-				stack := interpreter.StackItems()
-				t.Logf("Final Stack (%d items):\n%s", len(stack), interpreter.StackString())
-
-				if tt.shouldUnlock {
-					if !interpreter.IsUnlocked() {
-						t.Fatalf("Failed to unlock script : %s", interpreter.Error())
-					}
-					success = true
-				} else if interpreter.IsUnlocked() {
-					t.Fatalf("Should not have unlocked script")
-				} else {
-					t.Logf("Correctly did not unlock script : %s", interpreter.Error())
-				}
-				break
+			if err := interpreter.ExecuteTx(ctx, unlockingScript, tx, inputIndex, value,
+				hashCache); err != nil {
+				t.Fatalf("Failed to interpret unlocking script : %s", err)
 			}
 
-			if !success {
-				t.Fatalf("Failed to verify script in required number of malleations")
+			t.Logf("Execute locking script")
+
+			if err := interpreter.ExecuteTx(ctx, lockingScript, tx, inputIndex, value,
+				hashCache); err != nil {
+				t.Fatalf("Failed to interpret locking script : %s", err)
+			}
+
+			stack := interpreter.StackItems()
+			t.Logf("Final Stack (%d items):\n%s", len(stack), interpreter.StackString())
+
+			if tt.shouldUnlock {
+				if !interpreter.IsUnlocked() {
+					t.Fatalf("Failed to unlock script : %s", interpreter.Error())
+				}
+			} else if interpreter.IsUnlocked() {
+				t.Fatalf("Should not have unlocked script")
+			} else {
+				t.Logf("Correctly did not unlock script : %s", interpreter.Error())
 			}
 		})
 	}
@@ -595,8 +617,11 @@ func check_Random(ctx context.Context, t *testing.T,
 
 	for i := 0; i < 3; i++ {
 		hashCache := &bitcoin_interpreter.SigHashCache{}
+		writeSigPreimage := bitcoin_interpreter.TxWriteSignaturePreimage(tx, inputIndex, value,
+			hashCache)
+
 		needsMalleation := false
-		if err := Check(ctx, tx, 0, lockingScript, value, hashCache); err != nil {
+		if err := Check(ctx, writeSigPreimage, lockingScript); err != nil {
 			if errors.Cause(err) == check_signature_preimage.TxNeedsMalleation {
 				t.Logf("Tx needs malleation")
 				needsMalleation = true
@@ -621,7 +646,7 @@ func check_Random(ctx context.Context, t *testing.T,
 			bitcoin.PushData(agentKey.PublicKey().Bytes()),
 		)
 
-		if _, err := UnlockApprove(ctx, tx, inputIndex, value, lockingScript,
+		if _, err := UnlockApprove(ctx, writeSigPreimage, lockingScript,
 			agentUnlockingScript); err != nil {
 			if errors.Cause(err) == check_signature_preimage.TxNeedsMalleation {
 				if !needsMalleation {
@@ -700,70 +725,84 @@ func test_Unlocker(t *testing.T, ctx context.Context, sigHashType bitcoin_interp
 
 	tx.AddTxOut(wire.NewTxOut(value, approveLockingScript))
 
-	etx := &expanded_tx.ExpandedTx{
-		Tx: tx,
-		Ancestors: expanded_tx.AncestorTxs{
-			{
-				Tx: inputTx,
-			},
-		},
-	}
+	// etx := &expanded_tx.ExpandedTx{
+	// 	Tx: tx,
+	// 	Ancestors: expanded_tx.AncestorTxs{
+	// 		{
+	// 			Tx: inputTx,
+	// 		},
+	// 	},
+	// }
 
 	// Test approve unlock #########################################################################
 	approveUnlocker := NewAgentApproveUnlocker(agentUnlocker)
+
+	hashCache := &bitcoin_interpreter.SigHashCache{}
+	writeSigPreimage := bitcoin_interpreter.TxWriteSignaturePreimage(tx, inputIndex, value,
+		hashCache)
 
 	// Unlock tx
 	if !approveUnlocker.CanUnlock(lockingScript) {
 		t.Fatalf("CanUnlock should return true")
 	}
 
-	unlockingScript, err := approveUnlocker.Unlock(ctx, etx, inputIndex)
-	if err != nil {
-		t.Fatalf("Failed to unlock : %s", err)
-	}
+	for {
+		unlockingScript, err := approveUnlocker.Unlock(ctx, writeSigPreimage, lockingScript)
+		if err != nil {
+			t.Fatalf("Failed to unlock : %s", err)
+		}
 
-	unlockingSize, err := approveUnlocker.UnlockingSize(lockingScript)
-	if err != nil {
-		t.Fatalf("Failed to calculate unlocking size : %s", err)
-	}
+		unlockingSize, err := approveUnlocker.UnlockingSize(lockingScript)
+		if err != nil {
+			t.Fatalf("Failed to calculate unlocking size : %s", err)
+		}
 
-	if len(unlockingScript) > unlockingSize {
-		t.Fatalf("Unlocking size above estimate : got %d, want %d", unlockingSize,
-			len(unlockingScript))
-	}
+		if len(unlockingScript) > unlockingSize {
+			t.Fatalf("Unlocking size above estimate : got %d, want %d", unlockingSize,
+				len(unlockingScript))
+		}
 
-	if len(unlockingScript) > unlockingSize+5 {
-		t.Fatalf("Unlocking size over estimate : got %d, want %d", unlockingSize,
-			len(unlockingScript))
-	}
+		if len(unlockingScript) > unlockingSize+5 {
+			t.Fatalf("Unlocking size over estimate : got %d, want %d", unlockingSize,
+				len(unlockingScript))
+		}
 
-	t.Logf("Unlock size %d is within %d of estimated %d", len(unlockingScript), 5, unlockingSize)
+		t.Logf("Unlock size %d is within %d of estimated %d", len(unlockingScript), 5, unlockingSize)
 
-	tx.TxIn[inputIndex].UnlockingScript = unlockingScript
+		tx.TxIn[inputIndex].UnlockingScript = unlockingScript
 
-	// Verify unlocking script actually unlocks in the interpreter.
-	interpreter := bitcoin_interpreter.NewInterpreter()
+		// Verify unlocking script actually unlocks in the interpreter.
+		interpreter := bitcoin_interpreter.NewInterpreter()
 
-	hashCache := &bitcoin_interpreter.SigHashCache{}
-	if err := interpreter.ExecuteTx(ctx, unlockingScript, tx, inputIndex, value,
-		hashCache); err != nil {
-		t.Fatalf("Failed to interpret unlocking script : %s", err)
-	}
+		if err := interpreter.ExecuteTx(ctx, unlockingScript, tx, inputIndex, value,
+			hashCache); err != nil {
+			t.Fatalf("Failed to interpret unlocking script : %s", err)
+		}
 
-	if err := interpreter.ExecuteTx(ctx, lockingScript, tx, inputIndex, value,
-		hashCache); err != nil {
-		t.Fatalf("Failed to interpret locking script : %s", err)
-	}
+		if err := interpreter.ExecuteTx(ctx, lockingScript, tx, inputIndex, value,
+			hashCache); err != nil {
+			if errors.Cause(err) == check_signature_preimage.TxNeedsMalleation {
+				tx.LockTime++
+				hashCache.Clear()
+				continue
+			}
+			t.Fatalf("Failed to interpret locking script : %s", err)
+		}
 
-	stack := interpreter.StackItems()
-	t.Logf("Final Stack (%d items):\n%s", len(stack), interpreter.StackString())
+		stack := interpreter.StackItems()
+		t.Logf("Final Stack (%d items):\n%s", len(stack), interpreter.StackString())
 
-	if !interpreter.IsUnlocked() {
-		t.Fatalf("Failed to unlock script : %s", interpreter.Error())
+		if !interpreter.IsUnlocked() {
+			t.Fatalf("Failed to unlock script : %s", interpreter.Error())
+		}
+
+		break
 	}
 
 	// Test refund unlock ##########################################################################
 	refundUnlocker := NewAgentRefundUnlocker(agentUnlocker)
+
+	hashCache.Clear()
 
 	tx.TxOut[0] = wire.NewTxOut(value, refundLockingScript)
 
@@ -772,53 +811,64 @@ func test_Unlocker(t *testing.T, ctx context.Context, sigHashType bitcoin_interp
 		t.Fatalf("CanUnlock should return true")
 	}
 
-	unlockingScript, err = refundUnlocker.Unlock(ctx, etx, inputIndex)
-	if err != nil {
-		t.Fatalf("Failed to unlock : %s", err)
-	}
+	for {
+		unlockingScript, err := refundUnlocker.Unlock(ctx, writeSigPreimage, lockingScript)
+		if err != nil {
+			t.Fatalf("Failed to unlock : %s", err)
+		}
 
-	unlockingSize, err = refundUnlocker.UnlockingSize(lockingScript)
-	if err != nil {
-		t.Fatalf("Failed to calculate unlocking size : %s", err)
-	}
+		unlockingSize, err := refundUnlocker.UnlockingSize(lockingScript)
+		if err != nil {
+			t.Fatalf("Failed to calculate unlocking size : %s", err)
+		}
 
-	if len(unlockingScript) > unlockingSize {
-		t.Fatalf("Unlocking size above estimate : got %d, want %d", unlockingSize,
-			len(unlockingScript))
-	}
+		if len(unlockingScript) > unlockingSize {
+			t.Fatalf("Unlocking size above estimate : got %d, want %d", unlockingSize,
+				len(unlockingScript))
+		}
 
-	if len(unlockingScript) > unlockingSize+5 {
-		t.Fatalf("Unlocking size over estimate : got %d, want %d", unlockingSize,
-			len(unlockingScript))
-	}
+		if len(unlockingScript) > unlockingSize+5 {
+			t.Fatalf("Unlocking size over estimate : got %d, want %d", unlockingSize,
+				len(unlockingScript))
+		}
 
-	t.Logf("Unlock size %d is within %d of estimated %d", len(unlockingScript), 5, unlockingSize)
+		t.Logf("Unlock size %d is within %d of estimated %d", len(unlockingScript), 5, unlockingSize)
 
-	tx.TxIn[inputIndex].UnlockingScript = unlockingScript
+		tx.TxIn[inputIndex].UnlockingScript = unlockingScript
 
-	// Verify unlocking script actually unlocks in the interpreter.
-	interpreter = bitcoin_interpreter.NewInterpreter()
+		// Verify unlocking script actually unlocks in the interpreter.
+		interpreter := bitcoin_interpreter.NewInterpreter()
+		// interpreter.SetVerbose()
 
-	hashCache = &bitcoin_interpreter.SigHashCache{}
-	if err := interpreter.ExecuteTx(ctx, unlockingScript, tx, inputIndex, value,
-		hashCache); err != nil {
-		t.Fatalf("Failed to interpret unlocking script : %s", err)
-	}
+		if err := interpreter.ExecuteTx(ctx, unlockingScript, tx, inputIndex, value,
+			hashCache); err != nil {
+			t.Fatalf("Failed to interpret unlocking script : %s", err)
+		}
 
-	if err := interpreter.ExecuteTx(ctx, lockingScript, tx, inputIndex, value,
-		hashCache); err != nil {
-		t.Fatalf("Failed to interpret locking script : %s", err)
-	}
+		if err := interpreter.ExecuteTx(ctx, lockingScript, tx, inputIndex, value,
+			hashCache); err != nil {
+			if errors.Cause(err) == check_signature_preimage.TxNeedsMalleation {
+				tx.LockTime++
+				hashCache.Clear()
+				continue
+			}
+			t.Fatalf("Failed to interpret locking script : %s", err)
+		}
 
-	stack = interpreter.StackItems()
-	t.Logf("Final Stack (%d items):\n%s", len(stack), interpreter.StackString())
+		stack := interpreter.StackItems()
+		t.Logf("Final Stack (%d items):\n%s", len(stack), interpreter.StackString())
 
-	if !interpreter.IsUnlocked() {
-		t.Fatalf("Failed to unlock script : %s", interpreter.Error())
+		if !interpreter.IsUnlocked() {
+			t.Fatalf("Failed to unlock script : %s", interpreter.Error())
+		}
+
+		break
 	}
 
 	// Test recover unlock #########################################################################
 	transferRecoverUnlocker := NewRecoverUnlocker(recoverUnlocker)
+
+	hashCache.Clear()
 
 	tx.TxOut[0] = wire.NewTxOut(value, refundLockingScript)
 	tx.TxIn[inputIndex].Sequence = 1
@@ -829,49 +879,57 @@ func test_Unlocker(t *testing.T, ctx context.Context, sigHashType bitcoin_interp
 		t.Fatalf("CanUnlock should return true")
 	}
 
-	unlockingScript, err = transferRecoverUnlocker.Unlock(ctx, etx, inputIndex)
-	if err != nil {
-		t.Fatalf("Failed to unlock : %s", err)
-	}
+	for {
+		unlockingScript, err := transferRecoverUnlocker.Unlock(ctx, writeSigPreimage, lockingScript)
+		if err != nil {
+			t.Fatalf("Failed to unlock : %s", err)
+		}
 
-	unlockingSize, err = transferRecoverUnlocker.UnlockingSize(lockingScript)
-	if err != nil {
-		t.Fatalf("Failed to calculate unlocking size : %s", err)
-	}
+		unlockingSize, err := transferRecoverUnlocker.UnlockingSize(lockingScript)
+		if err != nil {
+			t.Fatalf("Failed to calculate unlocking size : %s", err)
+		}
 
-	if len(unlockingScript) > unlockingSize {
-		t.Fatalf("Unlocking size above estimate : got %d, want %d", unlockingSize,
-			len(unlockingScript))
-	}
+		if len(unlockingScript) > unlockingSize {
+			t.Fatalf("Unlocking size above estimate : got %d, want %d", unlockingSize,
+				len(unlockingScript))
+		}
 
-	if len(unlockingScript) > unlockingSize+5 {
-		t.Fatalf("Unlocking size over estimate : got %d, want %d", unlockingSize,
-			len(unlockingScript))
-	}
+		if len(unlockingScript) > unlockingSize+5 {
+			t.Fatalf("Unlocking size over estimate : got %d, want %d", unlockingSize,
+				len(unlockingScript))
+		}
 
-	t.Logf("Unlock size %d is within %d of estimated %d", len(unlockingScript), 5, unlockingSize)
+		t.Logf("Unlock size %d is within %d of estimated %d", len(unlockingScript), 5, unlockingSize)
 
-	tx.TxIn[inputIndex].UnlockingScript = unlockingScript
+		tx.TxIn[inputIndex].UnlockingScript = unlockingScript
 
-	// Verify unlocking script actually unlocks in the interpreter.
-	interpreter = bitcoin_interpreter.NewInterpreter()
+		// Verify unlocking script actually unlocks in the interpreter.
+		interpreter := bitcoin_interpreter.NewInterpreter()
 
-	hashCache = &bitcoin_interpreter.SigHashCache{}
-	if err := interpreter.ExecuteTx(ctx, unlockingScript, tx, inputIndex, value,
-		hashCache); err != nil {
-		t.Fatalf("Failed to interpret unlocking script : %s", err)
-	}
+		if err := interpreter.ExecuteTx(ctx, unlockingScript, tx, inputIndex, value,
+			hashCache); err != nil {
+			t.Fatalf("Failed to interpret unlocking script : %s", err)
+		}
 
-	if err := interpreter.ExecuteTx(ctx, lockingScript, tx, inputIndex, value,
-		hashCache); err != nil {
-		t.Fatalf("Failed to interpret locking script : %s", err)
-	}
+		if err := interpreter.ExecuteTx(ctx, lockingScript, tx, inputIndex, value,
+			hashCache); err != nil {
+			if errors.Cause(err) == check_signature_preimage.TxNeedsMalleation {
+				tx.LockTime++
+				hashCache.Clear()
+				continue
+			}
+			t.Fatalf("Failed to interpret locking script : %s", err)
+		}
 
-	stack = interpreter.StackItems()
-	t.Logf("Final Stack (%d items):\n%s", len(stack), interpreter.StackString())
+		stack := interpreter.StackItems()
+		t.Logf("Final Stack (%d items):\n%s", len(stack), interpreter.StackString())
 
-	if !interpreter.IsUnlocked() {
-		t.Fatalf("Failed to unlock script : %s", interpreter.Error())
+		if !interpreter.IsUnlocked() {
+			t.Fatalf("Failed to unlock script : %s", interpreter.Error())
+		}
+
+		break
 	}
 }
 

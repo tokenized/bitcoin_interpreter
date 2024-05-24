@@ -391,6 +391,8 @@ func CompleteAgentTransfer(ctx context.Context, config *Config, args []string) e
 	// tx.LockTime++
 
 	hashCache := &bitcoin_interpreter.SigHashCache{}
+	writeSigPreimage := bitcoin_interpreter.TxWriteSignaturePreimage(tx, 0, inputValues[0],
+		hashCache)
 
 	// Sign agent input
 	sigHash, err := bitcoin_interpreter.SignatureHash(tx, 0, agentTransferLockingScript, -1,
@@ -431,21 +433,21 @@ func CompleteAgentTransfer(ctx context.Context, config *Config, args []string) e
 	)
 
 	if option == 0 { // approve
-		unlockingScript, err := agent_bitcoin_transfer.UnlockApprove(ctx, tx, 0, inputValues[0],
+		unlockingScript, err := agent_bitcoin_transfer.UnlockApprove(ctx, writeSigPreimage,
 			agentTransferLockingScript, agentUnlockingScript)
 		if err != nil {
 			return fmt.Errorf("Failed to create agent transfer approve unlocking script : %s", err)
 		}
 		tx.TxIn[0].UnlockingScript = unlockingScript
 	} else if option == 1 { // refund
-		unlockingScript, err := agent_bitcoin_transfer.UnlockRefund(ctx, tx, 0, inputValues[0],
+		unlockingScript, err := agent_bitcoin_transfer.UnlockRefund(ctx, writeSigPreimage,
 			agentTransferLockingScript, agentUnlockingScript)
 		if err != nil {
 			return fmt.Errorf("Failed to create agent transfer refund unlocking script : %s", err)
 		}
 		tx.TxIn[0].UnlockingScript = unlockingScript
 	} else { // recover
-		unlockingScript, err := agent_bitcoin_transfer.UnlockRecover(ctx, tx, 0, inputValues[0],
+		unlockingScript, err := agent_bitcoin_transfer.UnlockRecover(ctx, writeSigPreimage,
 			agentTransferLockingScript, recoverUnlockingScript)
 		if err != nil {
 			return fmt.Errorf("Failed to create agent transfer recover unlocking script : %s", err)

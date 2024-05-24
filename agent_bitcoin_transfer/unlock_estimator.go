@@ -20,13 +20,14 @@ func NewApproveUnlockEstimator(subEstimators bitcoin_interpreter.Unlocker) *Appr
 }
 
 func (u *ApproveUnlockEstimator) Unlock(ctx context.Context,
-	tx bitcoin_interpreter.TransactionWithOutputs,
-	inputIndex int) (bitcoin.Script, error) {
-	return u.SubUnlock(ctx, tx, inputIndex, 0)
+	writeSigPreimage bitcoin_interpreter.WriteSignaturePreimage,
+	lockingScript bitcoin.Script) (bitcoin.Script, error) {
+	return nil, bitcoin_interpreter.CantSign
 }
 
 func (u *ApproveUnlockEstimator) SubUnlock(ctx context.Context,
-	tx bitcoin_interpreter.TransactionWithOutputs, inputIndex int,
+	writeSigPreimage bitcoin_interpreter.WriteSignaturePreimage,
+	lockingScript bitcoin.Script,
 	lockingScriptOffset int) (bitcoin.Script, error) {
 	return nil, bitcoin_interpreter.CantSign
 }

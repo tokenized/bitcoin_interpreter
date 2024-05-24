@@ -221,6 +221,8 @@ func checkSignaturePreimageScript(ctx context.Context, t *testing.T, txHex strin
 	t.Logf("Tx Bytes: %x", txBuf.Bytes())
 
 	hashCache := &bitcoin_interpreter.SigHashCache{}
+	writeSigPreimage := bitcoin_interpreter.TxWriteSignaturePreimage(tx, inputIndex, value,
+		hashCache)
 	preimage, err := bitcoin_interpreter.SignaturePreimage(tx, inputIndex, lockingScript, 1, value,
 		sigHashType, hashCache)
 	if err != nil {
@@ -239,8 +241,7 @@ func checkSignaturePreimageScript(ctx context.Context, t *testing.T, txHex strin
 
 	t.Logf("Correct Signature : %s", sig)
 
-	unlockingScript, err := Unlock(ctx, tx, inputIndex, lockingScript, 1,
-		value, sigHashType, hashCache)
+	unlockingScript, err := Unlock(ctx, writeSigPreimage, lockingScript, sigHashType, 1)
 	if needsMalleation {
 		if err == nil {
 			t.Fatalf("Should have returned needs malleation error")
@@ -258,9 +259,8 @@ func checkSignaturePreimageScript(ctx context.Context, t *testing.T, txHex strin
 	if needsMalleation {
 		for i := 0; i < 10; i++ {
 			tx.LockTime++
-			hashCache = &bitcoin_interpreter.SigHashCache{}
-			unlockingScript, err = Unlock(ctx, tx, inputIndex, lockingScript,
-				1, value, sigHashType, hashCache)
+			hashCache.Clear()
+			unlockingScript, err = Unlock(ctx, writeSigPreimage, lockingScript, sigHashType, 1)
 			if err == nil {
 				break
 			} else if errors.Cause(err) != TxNeedsMalleation {
@@ -343,8 +343,10 @@ func checkSignaturePreimageScript_Random(ctx context.Context, t *testing.T,
 
 	for i := 0; i < 3; i++ {
 		hashCache := &bitcoin_interpreter.SigHashCache{}
-		unlockingScript, err := Unlock(ctx, tx, inputIndex, lockingScript, 1,
-			value, sigHashType, hashCache)
+		writeSigPreimage := bitcoin_interpreter.TxWriteSignaturePreimage(tx, inputIndex, value,
+			hashCache)
+
+		unlockingScript, err := Unlock(ctx, writeSigPreimage, lockingScript, sigHashType, 1)
 		if err != nil {
 			if errors.Cause(err) == TxNeedsMalleation {
 				t.Logf("Tx needs malleation")
@@ -456,13 +458,17 @@ func check_Script_ComputeS(ctx context.Context, t *testing.T, hash []byte,
 	}
 
 	interpreter := bitcoin_interpreter.NewInterpreter()
-	calcSigHash := bitcoin_interpreter.TxSignatureHashCalculator(nil, 0, 0, nil)
+	if verbose {
+		interpreter.SetVerbose()
+	}
 
-	if err := interpreter.ExecuteFull(ctx, unlockingScript, calcSigHash, verbose); err != nil {
+	writeSigPreimage := bitcoin_interpreter.TxWriteSignaturePreimage(nil, 0, 0, nil)
+
+	if err := interpreter.Execute(ctx, unlockingScript, writeSigPreimage); err != nil {
 		t.Fatalf("Failed to interpret unlocking script : %s", err)
 	}
 
-	if err := interpreter.ExecuteFull(ctx, lockingScript, calcSigHash, verbose); err != nil {
+	if err := interpreter.Execute(ctx, lockingScript, writeSigPreimage); err != nil {
 		if errors.Cause(err) == bitcoin_interpreter.ErrNonMinimallyEncodedNumber {
 			t.Logf("Needs tx malleation : %s", err)
 			return

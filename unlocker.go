@@ -23,13 +23,14 @@ var (
 )
 
 type Unlocker interface {
-	// Unlock returns the correct unlocking script for the input specified.
-	Unlock(ctx context.Context, tx TransactionWithOutputs, inputIndex int) (bitcoin.Script, error)
+	// Unlock returns the correct unlocking script.
+	Unlock(ctx context.Context, writeSigPreimage WriteSignaturePreimage,
+		lockingScript bitcoin.Script) (bitcoin.Script, error)
 
-	// SubUnlock returns the correct unlocking script for the input specified. It supports
-	// sub-script where the script is embedded in another script.
-	SubUnlock(ctx context.Context, tx TransactionWithOutputs, inputIndex int,
-		lockingScriptOffset int) (bitcoin.Script, error)
+	// SubUnlock returns the correct unlocking script. It supports sub-script where the script is
+	// embedded in another script.
+	SubUnlock(ctx context.Context, writeSigPreimage WriteSignaturePreimage,
+		lockingScript bitcoin.Script, lockingScriptOffset int) (bitcoin.Script, error)
 
 	// UnlockingSize estimates the size of the unlocking script for the locking script.
 	UnlockingSize(lockingScript bitcoin.Script) (int, error)
@@ -57,11 +58,12 @@ type TransactionWithOutputs interface {
 
 type MultiUnlocker []Unlocker
 
-func (u MultiUnlocker) Unlock(ctx context.Context, tx TransactionWithOutputs,
-	inputIndex int) (bitcoin.Script, error) {
+func (u MultiUnlocker) Unlock(ctx context.Context, writeSigPreimage WriteSignaturePreimage,
+	lockingScript bitcoin.Script) (bitcoin.Script, error) {
 
 	for _, unlocker := range u {
-		if unlockingScript, err := unlocker.Unlock(ctx, tx, inputIndex); err == nil {
+		if unlockingScript, err := unlocker.Unlock(ctx, writeSigPreimage,
+			lockingScript); err == nil {
 			return unlockingScript, nil
 		} else if errors.Cause(err) != CantUnlock && errors.Cause(err) != ScriptNotMatching {
 			return nil, err
@@ -71,11 +73,11 @@ func (u MultiUnlocker) Unlock(ctx context.Context, tx TransactionWithOutputs,
 	return nil, CantUnlock
 }
 
-func (u MultiUnlocker) SubUnlock(ctx context.Context, tx TransactionWithOutputs, inputIndex int,
-	lockingScriptOffset int) (bitcoin.Script, error) {
+func (u MultiUnlocker) SubUnlock(ctx context.Context, writeSigPreimage WriteSignaturePreimage,
+	lockingScript bitcoin.Script, lockingScriptOffset int) (bitcoin.Script, error) {
 
 	for _, unlocker := range u {
-		if unlockingScript, err := unlocker.SubUnlock(ctx, tx, inputIndex,
+		if unlockingScript, err := unlocker.SubUnlock(ctx, writeSigPreimage, lockingScript,
 			lockingScriptOffset); err == nil {
 			return unlockingScript, nil
 		} else if errors.Cause(err) != CantUnlock {
