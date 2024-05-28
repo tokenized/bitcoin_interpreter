@@ -2,7 +2,6 @@ package p2pkh
 
 import (
 	"bytes"
-	"context"
 
 	"github.com/tokenized/bitcoin_interpreter"
 	"github.com/tokenized/pkg/bitcoin"
@@ -34,15 +33,13 @@ func NewUnlockerFull(key bitcoin.Key, verify bool, sigHashType bitcoin_interpret
 	}
 }
 
-func (u *Unlocker) Unlock(ctx context.Context,
-	writeSigPreimage bitcoin_interpreter.WriteSignaturePreimage,
+func (u *Unlocker) Unlock(writeSigPreimage bitcoin_interpreter.WriteSignaturePreimage,
 	lockingScript bitcoin.Script) (bitcoin.Script, error) {
-	return u.SubUnlock(ctx, writeSigPreimage, lockingScript, 0)
+	return u.SubUnlock(writeSigPreimage, lockingScript, 0)
 }
 
-func (u *Unlocker) SubUnlock(ctx context.Context,
-	writeSigPreimage bitcoin_interpreter.WriteSignaturePreimage, lockingScript bitcoin.Script,
-	lockingScriptOffset int) (bitcoin.Script, error) {
+func (u *Unlocker) SubUnlock(writeSigPreimage bitcoin_interpreter.WriteSignaturePreimage,
+	lockingScript bitcoin.Script, lockingScriptOffset int) (bitcoin.Script, error) {
 	return Unlock(u.Key, writeSigPreimage, lockingScript, lockingScriptOffset, u.SigHashType,
 		u.OpCodeSeparatorIndex, u.Verify)
 }

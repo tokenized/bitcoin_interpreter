@@ -1,8 +1,6 @@
 package p2pkh
 
 import (
-	"context"
-
 	"github.com/tokenized/bitcoin_interpreter"
 	"github.com/tokenized/pkg/bitcoin"
 )
@@ -15,15 +13,13 @@ func NewUnlockEstimator() *UnlockEstimator {
 	return &UnlockEstimator{}
 }
 
-func (u *UnlockEstimator) Unlock(ctx context.Context,
-	writeSigPreimage bitcoin_interpreter.WriteSignaturePreimage,
+func (u *UnlockEstimator) Unlock(writeSigPreimage bitcoin_interpreter.WriteSignaturePreimage,
 	lockingScript bitcoin.Script) (bitcoin.Script, error) {
 	return nil, bitcoin_interpreter.CantSign
 }
 
-func (u *UnlockEstimator) SubUnlock(ctx context.Context,
-	writeSigPreimage bitcoin_interpreter.WriteSignaturePreimage, lockingScript bitcoin.Script,
-	lockingScriptOffset int) (bitcoin.Script, error) {
+func (u *UnlockEstimator) SubUnlock(writeSigPreimage bitcoin_interpreter.WriteSignaturePreimage,
+	lockingScript bitcoin.Script, lockingScriptOffset int) (bitcoin.Script, error) {
 	return nil, bitcoin_interpreter.CantSign
 }
 

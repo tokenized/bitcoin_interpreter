@@ -278,7 +278,7 @@ func test_Unlock_Raw(t *testing.T) {
 						bitcoin.PushData(tt.txSigner.PublicKey().Bytes()),
 					)
 
-					unlockingScript, err = UnlockApprove(ctx, writeSigPreimage, lockingScript,
+					unlockingScript, err = UnlockApprove(writeSigPreimage, lockingScript,
 						agentUnlockingScript)
 					if err != nil {
 						if errors.Cause(err) == check_signature_preimage.TxNeedsMalleation {
@@ -313,7 +313,7 @@ func test_Unlock_Raw(t *testing.T) {
 						bitcoin.PushData(tt.txSigner.PublicKey().Bytes()),
 					)
 
-					unlockingScript, err = UnlockRefund(ctx, writeSigPreimage, lockingScript,
+					unlockingScript, err = UnlockRefund(writeSigPreimage, lockingScript,
 						agentUnlockingScript)
 					if err != nil {
 						if errors.Cause(err) == check_signature_preimage.TxNeedsMalleation {
@@ -348,7 +348,7 @@ func test_Unlock_Raw(t *testing.T) {
 						bitcoin.PushData(tt.txSigner.PublicKey().Bytes()),
 					)
 
-					unlockingScript, err = UnlockRecover(ctx, writeSigPreimage, lockingScript,
+					unlockingScript, err = UnlockRecover(writeSigPreimage, lockingScript,
 						recoverUnlockingScript)
 					if err != nil {
 						if errors.Cause(err) == check_signature_preimage.TxNeedsMalleation {
@@ -646,7 +646,7 @@ func check_Random(ctx context.Context, t *testing.T,
 			bitcoin.PushData(agentKey.PublicKey().Bytes()),
 		)
 
-		if _, err := UnlockApprove(ctx, writeSigPreimage, lockingScript,
+		if _, err := UnlockApprove(writeSigPreimage, lockingScript,
 			agentUnlockingScript); err != nil {
 			if errors.Cause(err) == check_signature_preimage.TxNeedsMalleation {
 				if !needsMalleation {
@@ -747,7 +747,7 @@ func test_Unlocker(t *testing.T, ctx context.Context, sigHashType bitcoin_interp
 	}
 
 	for {
-		unlockingScript, err := approveUnlocker.Unlock(ctx, writeSigPreimage, lockingScript)
+		unlockingScript, err := approveUnlocker.Unlock(writeSigPreimage, lockingScript)
 		if err != nil {
 			t.Fatalf("Failed to unlock : %s", err)
 		}
@@ -812,7 +812,7 @@ func test_Unlocker(t *testing.T, ctx context.Context, sigHashType bitcoin_interp
 	}
 
 	for {
-		unlockingScript, err := refundUnlocker.Unlock(ctx, writeSigPreimage, lockingScript)
+		unlockingScript, err := refundUnlocker.Unlock(writeSigPreimage, lockingScript)
 		if err != nil {
 			t.Fatalf("Failed to unlock : %s", err)
 		}
@@ -880,7 +880,7 @@ func test_Unlocker(t *testing.T, ctx context.Context, sigHashType bitcoin_interp
 	}
 
 	for {
-		unlockingScript, err := transferRecoverUnlocker.Unlock(ctx, writeSigPreimage, lockingScript)
+		unlockingScript, err := transferRecoverUnlocker.Unlock(writeSigPreimage, lockingScript)
 		if err != nil {
 			t.Fatalf("Failed to unlock : %s", err)
 		}

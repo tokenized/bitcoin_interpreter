@@ -65,7 +65,7 @@ func MatchScript(lockingScript bitcoin.Script, verify bool) (*bitcoin.PublicKey,
 
 	var publicKeyBytes []byte
 	items, publicKeyBytes, err = bitcoin_interpreter.MatchNextPushDataSize(items,
-		bitcoin_interpreter.PublicKeyPushDataSize)
+		bitcoin_interpreter.PublicKeySize)
 	if err != nil {
 		return nil, errors.Wrap(err, "match public key")
 	}

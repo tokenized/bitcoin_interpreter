@@ -241,7 +241,7 @@ func checkSignaturePreimageScript(ctx context.Context, t *testing.T, txHex strin
 
 	t.Logf("Correct Signature : %s", sig)
 
-	unlockingScript, err := Unlock(ctx, writeSigPreimage, lockingScript, sigHashType, 1)
+	unlockingScript, err := Unlock(writeSigPreimage, lockingScript, sigHashType, 1)
 	if needsMalleation {
 		if err == nil {
 			t.Fatalf("Should have returned needs malleation error")
@@ -260,7 +260,7 @@ func checkSignaturePreimageScript(ctx context.Context, t *testing.T, txHex strin
 		for i := 0; i < 10; i++ {
 			tx.LockTime++
 			hashCache.Clear()
-			unlockingScript, err = Unlock(ctx, writeSigPreimage, lockingScript, sigHashType, 1)
+			unlockingScript, err = Unlock(writeSigPreimage, lockingScript, sigHashType, 1)
 			if err == nil {
 				break
 			} else if errors.Cause(err) != TxNeedsMalleation {
@@ -346,7 +346,7 @@ func checkSignaturePreimageScript_Random(ctx context.Context, t *testing.T,
 		writeSigPreimage := bitcoin_interpreter.TxWriteSignaturePreimage(tx, inputIndex, value,
 			hashCache)
 
-		unlockingScript, err := Unlock(ctx, writeSigPreimage, lockingScript, sigHashType, 1)
+		unlockingScript, err := Unlock(writeSigPreimage, lockingScript, sigHashType, 1)
 		if err != nil {
 			if errors.Cause(err) == TxNeedsMalleation {
 				t.Logf("Tx needs malleation")

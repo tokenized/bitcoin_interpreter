@@ -1,8 +1,6 @@
 package agent_bitcoin_transfer
 
 import (
-	"context"
-
 	"github.com/tokenized/bitcoin_interpreter"
 	"github.com/tokenized/pkg/bitcoin"
 )
@@ -19,16 +17,13 @@ func NewApproveUnlockEstimator(subEstimators bitcoin_interpreter.Unlocker) *Appr
 	}
 }
 
-func (u *ApproveUnlockEstimator) Unlock(ctx context.Context,
-	writeSigPreimage bitcoin_interpreter.WriteSignaturePreimage,
+func (u *ApproveUnlockEstimator) Unlock(writeSigPreimage bitcoin_interpreter.WriteSignaturePreimage,
 	lockingScript bitcoin.Script) (bitcoin.Script, error) {
 	return nil, bitcoin_interpreter.CantSign
 }
 
-func (u *ApproveUnlockEstimator) SubUnlock(ctx context.Context,
-	writeSigPreimage bitcoin_interpreter.WriteSignaturePreimage,
-	lockingScript bitcoin.Script,
-	lockingScriptOffset int) (bitcoin.Script, error) {
+func (u *ApproveUnlockEstimator) SubUnlock(writeSigPreimage bitcoin_interpreter.WriteSignaturePreimage,
+	lockingScript bitcoin.Script, lockingScriptOffset int) (bitcoin.Script, error) {
 	return nil, bitcoin_interpreter.CantSign
 }
 

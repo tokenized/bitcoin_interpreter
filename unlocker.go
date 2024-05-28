@@ -1,8 +1,6 @@
 package bitcoin_interpreter
 
 import (
-	"context"
-
 	"github.com/tokenized/pkg/bitcoin"
 	"github.com/tokenized/pkg/wire"
 
@@ -24,12 +22,12 @@ var (
 
 type Unlocker interface {
 	// Unlock returns the correct unlocking script.
-	Unlock(ctx context.Context, writeSigPreimage WriteSignaturePreimage,
+	Unlock(writeSigPreimage WriteSignaturePreimage,
 		lockingScript bitcoin.Script) (bitcoin.Script, error)
 
 	// SubUnlock returns the correct unlocking script. It supports sub-script where the script is
 	// embedded in another script.
-	SubUnlock(ctx context.Context, writeSigPreimage WriteSignaturePreimage,
+	SubUnlock(writeSigPreimage WriteSignaturePreimage,
 		lockingScript bitcoin.Script, lockingScriptOffset int) (bitcoin.Script, error)
 
 	// UnlockingSize estimates the size of the unlocking script for the locking script.
@@ -58,11 +56,11 @@ type TransactionWithOutputs interface {
 
 type MultiUnlocker []Unlocker
 
-func (u MultiUnlocker) Unlock(ctx context.Context, writeSigPreimage WriteSignaturePreimage,
+func (u MultiUnlocker) Unlock(writeSigPreimage WriteSignaturePreimage,
 	lockingScript bitcoin.Script) (bitcoin.Script, error) {
 
 	for _, unlocker := range u {
-		if unlockingScript, err := unlocker.Unlock(ctx, writeSigPreimage,
+		if unlockingScript, err := unlocker.Unlock(writeSigPreimage,
 			lockingScript); err == nil {
 			return unlockingScript, nil
 		} else if errors.Cause(err) != CantUnlock && errors.Cause(err) != ScriptNotMatching {
@@ -73,11 +71,11 @@ func (u MultiUnlocker) Unlock(ctx context.Context, writeSigPreimage WriteSignatu
 	return nil, CantUnlock
 }
 
-func (u MultiUnlocker) SubUnlock(ctx context.Context, writeSigPreimage WriteSignaturePreimage,
+func (u MultiUnlocker) SubUnlock(writeSigPreimage WriteSignaturePreimage,
 	lockingScript bitcoin.Script, lockingScriptOffset int) (bitcoin.Script, error) {
 
 	for _, unlocker := range u {
-		if unlockingScript, err := unlocker.SubUnlock(ctx, writeSigPreimage, lockingScript,
+		if unlockingScript, err := unlocker.SubUnlock(writeSigPreimage, lockingScript,
 			lockingScriptOffset); err == nil {
 			return unlockingScript, nil
 		} else if errors.Cause(err) != CantUnlock {

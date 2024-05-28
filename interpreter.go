@@ -152,7 +152,7 @@ func (i *Interpreter) ExecuteOpCode(ctx context.Context, item *bitcoin.ScriptIte
 	writeSigPreimage WriteSignaturePreimage) error {
 
 	if !i.ifIsExecute() {
-		if i.verbose {
+		if i.verbose && ctx != nil {
 			logger.VerboseWithFields(ctx, []logger.Field{
 				logger.Int("item_index", itemIndex),
 				logger.Stringer("item", item),
@@ -169,7 +169,7 @@ func (i *Interpreter) ExecuteOpCode(ctx context.Context, item *bitcoin.ScriptIte
 
 		switch item.OpCode {
 		case bitcoin.OP_IF:
-			if i.verbose {
+			if i.verbose && ctx != nil {
 				logger.VerboseWithFields(ctx, []logger.Field{
 					logger.Int("item_index", itemIndex),
 					logger.Int("if_depth", len(i.ifStack)),
@@ -179,7 +179,7 @@ func (i *Interpreter) ExecuteOpCode(ctx context.Context, item *bitcoin.ScriptIte
 			i.ifStack = append(i.ifStack, &ifStackItem{})
 
 		case bitcoin.OP_NOTIF:
-			if i.verbose {
+			if i.verbose && ctx != nil {
 				logger.VerboseWithFields(ctx, []logger.Field{
 					logger.Int("item_index", itemIndex),
 					logger.Int("if_depth", len(i.ifStack)),
@@ -194,7 +194,7 @@ func (i *Interpreter) ExecuteOpCode(ctx context.Context, item *bitcoin.ScriptIte
 				return errors.Wrapf(ErrScriptInvalid, "if stack empty: %s", item)
 			}
 
-			if i.verbose {
+			if i.verbose && ctx != nil {
 				logger.VerboseWithFields(ctx, []logger.Field{
 					logger.Int("item_index", itemIndex),
 					logger.Int("if_depth", len(i.ifStack)),
@@ -217,7 +217,7 @@ func (i *Interpreter) ExecuteOpCode(ctx context.Context, item *bitcoin.ScriptIte
 				return errors.Wrapf(ErrScriptInvalid, "if stack empty: %s", item)
 			}
 
-			if i.verbose {
+			if i.verbose && ctx != nil {
 				logger.VerboseWithFields(ctx, []logger.Field{
 					logger.Int("item_index", itemIndex),
 					logger.Int("if_depth", len(i.ifStack)),
@@ -230,7 +230,7 @@ func (i *Interpreter) ExecuteOpCode(ctx context.Context, item *bitcoin.ScriptIte
 		return nil
 	}
 
-	if i.verbose {
+	if i.verbose && ctx != nil {
 		logger.VerboseWithFields(ctx, []logger.Field{
 			logger.Int("item_index", itemIndex),
 			logger.Stringer("item", item),
@@ -302,7 +302,7 @@ func (i *Interpreter) ExecuteOpCode(ctx context.Context, item *bitcoin.ScriptIte
 		}
 
 		execute := isTrue(b)
-		if i.verbose {
+		if i.verbose && ctx != nil {
 			logger.VerboseWithFields(ctx, []logger.Field{
 				logger.Int("item_index", itemIndex),
 				logger.Int("if_depth", len(i.ifStack)),
@@ -325,7 +325,7 @@ func (i *Interpreter) ExecuteOpCode(ctx context.Context, item *bitcoin.ScriptIte
 		}
 
 		execute := !isTrue(b)
-		if i.verbose {
+		if i.verbose && ctx != nil {
 			logger.VerboseWithFields(ctx, []logger.Field{
 				logger.Int("item_index", itemIndex),
 				logger.Int("if_depth", len(i.ifStack)),
@@ -349,7 +349,7 @@ func (i *Interpreter) ExecuteOpCode(ctx context.Context, item *bitcoin.ScriptIte
 		}
 		lastIfItem.elseFound = true
 		lastIfItem.execute = !lastIfItem.execute
-		if i.verbose {
+		if i.verbose && ctx != nil {
 			logger.VerboseWithFields(ctx, []logger.Field{
 				logger.Int("item_index", itemIndex),
 				logger.Int("if_depth", len(i.ifStack)),
@@ -363,7 +363,7 @@ func (i *Interpreter) ExecuteOpCode(ctx context.Context, item *bitcoin.ScriptIte
 			return errors.Wrapf(ErrScriptInvalid, "if stack empty: %s", item)
 		}
 
-		if i.verbose {
+		if i.verbose && ctx != nil {
 			logger.VerboseWithFields(ctx, []logger.Field{
 				logger.Int("item_index", itemIndex),
 				logger.Int("if_depth", len(i.ifStack)),
@@ -379,7 +379,7 @@ func (i *Interpreter) ExecuteOpCode(ctx context.Context, item *bitcoin.ScriptIte
 		}
 
 		if !isTrue(b) {
-			if i.verbose {
+			if i.verbose && ctx != nil {
 				logger.VerboseWithFields(ctx, []logger.Field{
 					logger.Int("item_index", itemIndex),
 				}, "Verify failed")
@@ -1464,7 +1464,7 @@ func (i *Interpreter) ExecuteOpCode(ctx context.Context, item *bitcoin.ScriptIte
 		}
 
 		verified := signature.Verify(sigHash, publicKey)
-		if i.verbose {
+		if i.verbose && ctx != nil {
 			if verified {
 				logger.Verbose(ctx, "Sig verified")
 			} else {

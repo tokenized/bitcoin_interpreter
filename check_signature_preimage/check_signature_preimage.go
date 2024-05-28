@@ -2,10 +2,8 @@ package check_signature_preimage
 
 import (
 	"bytes"
-	"context"
 
 	"github.com/tokenized/bitcoin_interpreter"
-	"github.com/tokenized/logger"
 	"github.com/tokenized/pkg/bitcoin"
 
 	"github.com/pkg/errors"
@@ -29,7 +27,7 @@ func CreateScript(sigHashType bitcoin_interpreter.SigHashType) bitcoin.Script {
 	)
 }
 
-func Unlock(ctx context.Context, writeSigPreimage bitcoin_interpreter.WriteSignaturePreimage,
+func Unlock(writeSigPreimage bitcoin_interpreter.WriteSignaturePreimage,
 	lockingScript bitcoin.Script, sigHashType bitcoin_interpreter.SigHashType,
 	opCodeSeparatorIndex int) (bitcoin.Script, error) {
 
@@ -38,11 +36,6 @@ func Unlock(ctx context.Context, writeSigPreimage bitcoin_interpreter.WriteSigna
 		return nil, errors.Wrap(err, "preimage")
 	}
 	preimage := buf.Bytes()
-
-	sigHash := bitcoin.DoubleSha256(preimage)
-	logger.InfoWithFields(ctx, []logger.Field{
-		logger.Formatter("sig_hash", "%x", sigHash),
-	}, "Preimage hash")
 
 	unlockingScript := bitcoin.PushData(preimage)
 
@@ -54,11 +47,11 @@ func Unlock(ctx context.Context, writeSigPreimage bitcoin_interpreter.WriteSigna
 
 	interpreter := bitcoin_interpreter.NewInterpreter()
 
-	if err := interpreter.Execute(ctx, unlockingScript, writeSigPreimage); err != nil {
+	if err := interpreter.Execute(nil, unlockingScript, writeSigPreimage); err != nil {
 		return nil, errors.Wrap(err, "execute unlocking")
 	}
 
-	if err := interpreter.Execute(ctx, checkLockingScript, writeSigPreimage); err != nil {
+	if err := interpreter.Execute(nil, checkLockingScript, writeSigPreimage); err != nil {
 		cause := errors.Cause(err)
 		if cause == bitcoin_interpreter.ErrMalformedSignature ||
 			cause == bitcoin_interpreter.ErrNonMinimallyEncodedNumber {
